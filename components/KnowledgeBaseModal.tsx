@@ -11,10 +11,10 @@ const KnowledgeBaseModal: React.FC<Props> = ({ initialContent, onSave, onClose }
   const [content, setContent] = useState(initialContent);
 
   return (
-    <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-slate-900 border border-cyan-500/30 rounded-xl shadow-[0_0_50px_rgba(34,211,238,0.1)] flex flex-col h-[80vh] animate-in zoom-in-95 duration-300">
+    <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-slate-950/60 backdrop-blur-xl border border-cyan-500/20 rounded-xl shadow-[0_0_50px_rgba(34,211,238,0.1)] flex flex-col h-[80vh] animate-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/50 rounded-t-xl">
+        <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/30 rounded-t-xl">
            <div className="flex items-center gap-3">
               <div className="p-2 bg-violet-500/10 rounded-lg border border-violet-500/30">
                  <Database size={20} className="text-violet-400" />
@@ -55,7 +55,7 @@ const KnowledgeBaseModal: React.FC<Props> = ({ initialContent, onSave, onClose }
         </div>
 
         {/* Footer */}
-        <div className="p-5 border-t border-slate-800 bg-slate-950/50 rounded-b-xl flex justify-end gap-3">
+        <div className="p-5 border-t border-slate-800 bg-slate-950/30 rounded-b-xl flex justify-end gap-3">
            <button 
              onClick={onClose}
              className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors"

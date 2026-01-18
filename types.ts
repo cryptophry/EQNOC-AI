@@ -2,7 +2,8 @@
 export enum MessageRole {
   USER = 'user',
   MODEL = 'model',
-  SYSTEM = 'system'
+  SYSTEM = 'system',
+  FUNCTION = 'function'
 }
 
 export interface Message {
@@ -70,4 +71,15 @@ export interface WarRoomEvent {
   timestamp: number;
   type: 'USER' | 'SYSTEM' | 'AI' | 'MANUAL';
   message: string;
+}
+
+export interface ActivityItem {
+    uniqueId: string;
+    sessionId: string;
+    sessionTitle: string;
+    text: string;
+    timestamp: Date;
+    status: 'OPEN' | 'RESOLVED' | 'MONITORING';
+    isAiGrouped?: boolean;
+    isLoading?: boolean;
 }

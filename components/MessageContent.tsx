@@ -138,8 +138,8 @@ interface Block { type: 'p' | 'h' | 'li' | 'table'; content?: string; level?: nu
 
 const FormattedText: React.FC<{ text: string }> = ({ text }) => {
   // Pre-process: Detect patterns like "Q1:" stuck inline and force them to new lines
-  // Example: "questions: Q1: ... Q2: ..." -> "questions:\nQ1: ...\nQ2: ..."
-  const cleanText = text.replace(/([^\n])\s+(Q\d+:)/g, '$1\n$2');
+  // Enhanced to handle bolding like "**Q1:**" or "**Q1**:" or even just "Q1" if it looks like a label start
+  const cleanText = text.replace(/([^\n])\s+(\**Q\d+(?:[:.]|(?:\*\*|__)?[:.]))/g, '$1\n$2');
 
   const blocks: Block[] = [];
   const lines = cleanText.split('\n');
@@ -177,7 +177,10 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
 
     const ulMatch = trimmed.match(/^[-*]\s+(.*)/);
     const olMatch = trimmed.match(/^(\d+\.)\s+(.*)/);
-    const qMatch = trimmed.match(/^(Q\d+):\s*(.*)/); // Match "Q1: text"
+    // Match "Q1: text", "**Q1:** text", "**Q1**: text"
+    // Capture group 1: The label (e.g. "**Q1:**")
+    // Capture group 2: The content
+    const qMatch = trimmed.match(/^(\*{0,2}Q\d+.*?)[:.]\s+(.*)/);
 
     if (ulMatch || olMatch || qMatch) {
         if (currentTable) flush();
@@ -189,7 +192,7 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
               text: qMatch[2], 
               isOrdered: false, 
               level: Math.floor(indent),
-              customLabel: qMatch[1] // Store "Q1"
+              customLabel: qMatch[1].replace(/[*_:]/g, '') // Clean markdown chars from label
             });
         } else {
             currentList.push({ 
@@ -232,9 +235,9 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
           return (
             <ul key={idx} className="space-y-2 my-3">
               {b.items?.map((item, i) => (
-                <li key={i} className="flex gap-3 text-base leading-7" style={{ paddingLeft: `${item.level * 1.5}em` }}>
+                <li key={i} className={`flex gap-3 text-base leading-7 ${item.customLabel ? 'bg-slate-900/40 p-3 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors' : ''}`} style={{ paddingLeft: item.customLabel ? '0.75rem' : `${item.level * 1.5}em` }}>
                   {item.customLabel ? (
-                     <span className="shrink-0 font-mono font-bold text-xs bg-cyan-950 text-cyan-400 border border-cyan-500/30 rounded px-1.5 py-0.5 mt-1 h-fit shadow-[0_0_10px_rgba(34,211,238,0.1)]">
+                     <span className="shrink-0 font-mono font-bold text-xs bg-cyan-950 text-cyan-400 border border-cyan-500/30 rounded px-2 py-1 h-fit shadow-[0_0_10px_rgba(34,211,238,0.1)]">
                        {item.customLabel}
                      </span>
                   ) : (

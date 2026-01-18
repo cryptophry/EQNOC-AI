@@ -1,71 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { parseOutageData, OutageRecord } from '../services/gemini';
-import { Zap, ZapOff, Loader2, RefreshCw, MapPin, Clock, Users, AlertTriangle, CheckCircle2, Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { OutageRecord } from '../services/gemini';
+import { Zap, ZapOff, Loader2, RefreshCw, MapPin, Clock, Users, AlertTriangle, CheckCircle2, Search, Hash, Calendar, Radio } from 'lucide-react';
 
 interface Props {
-  persistedOutages?: OutageRecord[];
-  persistedLastUpdated?: Date | null;
-  onOutagesChange?: (outages: OutageRecord[], lastUpdated: Date) => void;
+  outages: OutageRecord[];
+  lastUpdated: Date | null;
+  isLoading: boolean;
+  error: string | null;
+  isSimulated?: boolean;
+  onRefresh: () => void;
 }
 
-const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated, onOutagesChange }) => {
-  const [outages, setOutages] = useState<OutageRecord[]>(persistedOutages || []);
-  const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(persistedLastUpdated || null);
+const OutageTracker: React.FC<Props> = ({ outages, lastUpdated, isLoading, error, isSimulated, onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchOutages = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Target URL for Ergon Energy Text View
-      const targetUrl = 'https://www.ergon.com.au/network/outages/outage-finder/outage-finder-text-view';
-      
-      // Use corsproxy.io which is more robust for direct HTML fetching. 
-      // It returns the RAW HTML string, not a JSON object.
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      
-      if (!response.ok) {
-        throw new Error(`Network response was not ok: ${response.statusText}`);
-      }
-
-      // We expect HTML text, not JSON
-      const htmlText = await response.text();
-
-      // Basic validation to ensure we didn't get a proxy error page
-      if (htmlText.trim().startsWith('Error') || htmlText.includes('403 Forbidden')) {
-         throw new Error("Proxy access denied or target site blocked.");
-      }
-
-      // Pass the raw HTML to Gemini to structure it
-      const records = await parseOutageData(htmlText);
-      const now = new Date();
-      
-      setOutages(records);
-      setLastUpdated(now);
-      
-      // Sync to parent
-      onOutagesChange?.(records, now);
-
-    } catch (err) {
-      console.error("Outage fetch error:", err);
-      // Fallback message if fetch fails
-      setError("Unable to retrieve live outage feed. The utility provider may be blocking external access.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // Only fetch automatically if we don't have persisted data
-    // If lastUpdated is present, we assume data (or empty state) is valid
-    if (!lastUpdated) {
-        fetchOutages();
-    }
-  }, []);
 
   const filteredOutages = outages.filter(o => 
     o.suburb.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -87,8 +34,15 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
                 <ZapOff size={14} className="text-red-400" />
                 Ergon Energy Outage Watch
             </label>
-            <div className="text-[10px] font-mono text-slate-500">
-                {lastUpdated ? `UPDATED: ${lastUpdated.toLocaleTimeString()}` : 'SYNC REQUIRED'}
+            <div className="flex items-center gap-2">
+                {isSimulated && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded border border-amber-900/50 bg-amber-950/20 text-[9px] font-bold text-amber-500 uppercase tracking-wider animate-pulse">
+                        <Radio size={10} /> SIMULATED
+                    </div>
+                )}
+                <div className="text-[10px] font-mono text-slate-500">
+                    {lastUpdated ? `UPDATED: ${lastUpdated.toLocaleTimeString()}` : 'SYNC REQUIRED'}
+                </div>
             </div>
         </div>
         
@@ -104,11 +58,11 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
              />
           </div>
           <button
-            onClick={fetchOutages}
-            disabled={loading}
+            onClick={onRefresh}
+            disabled={isLoading}
             className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-lg px-4 py-2.5 transition-all disabled:opacity-50"
           >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
           </button>
         </div>
       </div>
@@ -121,7 +75,14 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
             </div>
         )}
 
-        {!loading && filteredOutages.length === 0 && !error && (
+        {isSimulated && !error && (
+            <div className="p-3 mb-1 rounded-lg bg-amber-950/10 border border-amber-900/30 text-amber-500/80 flex items-center gap-3 text-xs font-mono">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>DEMO MODE: LIVE FEED UNAVAILABLE. DISPLAYING SIMULATION.</span>
+            </div>
+        )}
+
+        {!isLoading && filteredOutages.length === 0 && !error && (
             <div className="flex flex-col items-center justify-center h-full text-slate-600 opacity-80">
                 <CheckCircle2 size={48} className="mb-4 text-emerald-500/50" />
                 <p className="text-sm font-bold tracking-wide">NO OUTAGES DETECTED</p>
@@ -129,7 +90,7 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
             </div>
         )}
 
-        {loading && filteredOutages.length === 0 && (
+        {isLoading && filteredOutages.length === 0 && (
              <div className="flex flex-col items-center justify-center h-full">
                  <div className="w-10 h-10 border-4 border-slate-800 border-t-red-500 rounded-full animate-spin mb-4"></div>
                  <p className="font-mono text-xs text-red-500 uppercase tracking-widest font-bold">Scanning Utility Feed...</p>
@@ -137,7 +98,14 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
         )}
 
         {filteredOutages.map((outage, idx) => (
-            <div key={idx} className="bg-slate-900/60 border border-slate-800 hover:border-slate-700 rounded-lg p-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div key={idx} className="bg-slate-900/60 border border-slate-800 hover:border-slate-700 rounded-lg p-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-300 relative overflow-hidden">
+                {/* Council Watermark/Header */}
+                {outage.council && (
+                    <div className="text-[9px] font-mono font-bold text-slate-600 uppercase tracking-widest mb-2 border-b border-slate-800/50 pb-1">
+                        {outage.council}
+                    </div>
+                )}
+
                 <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
                         {outage.type.toLowerCase().includes('unplanned') ? (
@@ -154,15 +122,26 @@ const OutageTracker: React.FC<Props> = ({ persistedOutages, persistedLastUpdated
                 
                 <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs mb-3">
                     <div className="col-span-2 text-slate-400 flex items-start gap-2">
-                        <MapPin size={12} className="mt-0.5 shrink-0" /> 
+                        <MapPin size={12} className="mt-0.5 shrink-0 text-slate-500" /> 
                         <span>{outage.location}</span>
                     </div>
+
+                    <div className="text-slate-400 flex items-center gap-2" title="Event ID">
+                        <Hash size={12} className="text-slate-500" /> 
+                        <span className="font-mono text-[10px] text-slate-300">{outage.eventId || 'N/A'}</span>
+                    </div>
+
+                    <div className="text-slate-400 flex items-center gap-2" title="Start Time">
+                        <Calendar size={12} className="text-slate-500" /> 
+                        <span className="text-[10px]">{outage.startTime || '-'}</span>
+                    </div>
+
                     <div className="text-slate-400 flex items-center gap-2">
-                        <Users size={12} /> 
+                        <Users size={12} className="text-slate-500" /> 
                         <span>{outage.customersAffected} Affected</span>
                     </div>
                     <div className="text-slate-400 flex items-center gap-2">
-                        <Clock size={12} /> 
+                        <Clock size={12} className="text-slate-500" /> 
                         <span className="text-cyan-400">{outage.estFix}</span>
                     </div>
                 </div>

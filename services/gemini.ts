@@ -1,42 +1,152 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Chat, Type, Schema } from "@google/genai";
+import { Session, Message, CommandRef, FlowNode, MessageRole } from "../types";
 import { EQNOC_KNOWLEDGE_BASE } from "../constants";
-import { FlowNode, CommandRef, Session, MessageRole } from "../types";
 
-// Ensure API key exists
-const apiKey = process.env.API_KEY || '';
+// Initialize AI
+export const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const ai = new GoogleGenAI({ apiKey });
+// --- Types ---
 
-// Helper for retry logic on rate limits
-const retryWithBackoff = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
-  try {
-    return await fn();
-  } catch (error: any) {
-    if (retries > 0 && (error?.status === 429 || error?.code === 429 || error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED'))) {
-      console.warn(`Rate limit hit (429). Retrying in ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return retryWithBackoff(fn, retries - 1, delay * 2);
-    }
-    throw error;
-  }
-};
+export interface OutageRecord {
+  suburb: string;
+  location: string;
+  customersAffected: string;
+  status: string;
+  estFix: string;
+  description: string;
+  type: string;
+  startTime?: string;
+  council?: string;
+  eventId?: string;
+}
 
-export const createChatSession = (customContext?: string, history?: any[]) => {
-  const combinedSystemInstruction = customContext
-    ? `${EQNOC_KNOWLEDGE_BASE}\n\n=== CUSTOMER SPECIFIC KNOWLEDGE BASE (HIGH PRIORITY) ===\n${customContext}\n\nINSTRUCTIONS:\n- You MUST prioritize the Custom Knowledge Base above for any procedural steps or policies.\n- If the Custom Knowledge Base contradicts general knowledge, follow the Custom Knowledge Base.`
-    : EQNOC_KNOWLEDGE_BASE;
+export interface RegexResult {
+  cisco: string;
+  juniper: string;
+  grep: string;
+  explanation: string;
+}
 
+export interface MacLookupResult {
+  vendor: string;
+  country: string;
+  isPrivate: boolean;
+}
+
+export interface ChangeAuditResult {
+  score: number;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  impactAnalysis: string[];
+  preChecks: string[];
+  postChecks: string[];
+  rollbackPlan: string;
+}
+
+export interface FiberPathData {
+  start: { x: number, y: number, name: string };
+  end: { x: number, y: number, name: string };
+  route: { x: number, y: number }[];
+  distance: number;
+  estimatedLoss: number;
+  events: { distance: number, type: 'SPLICE' | 'CONNECTOR' | 'BEND' | 'CUT', loss: number }[];
+}
+
+export interface TicketDraft {
+  shortDescription: string;
+  description: string;
+  configurationItem: string;
+  impact: string;
+  urgency: string;
+  workNotes: string;
+}
+
+// --- Functions ---
+
+export const createChatSession = (customKb?: string, history?: any[]): Chat => {
+  const systemInstruction = customKb ? `${EQNOC_KNOWLEDGE_BASE}\n\nADDITIONAL CONTEXT (PRIORITY):\n${customKb}` : EQNOC_KNOWLEDGE_BASE;
+  
   return ai.chats.create({
-    // gemini-2.5-flash is required for Google Maps Grounding
-    model: 'gemini-2.5-flash', 
+    model: 'gemini-3-flash-preview',
     config: {
-      systemInstruction: combinedSystemInstruction,
-      temperature: 0.7,
+      systemInstruction,
       tools: [
-        // Combine tools into a single Tool object
-        { 
-          googleSearch: {}, 
-          googleMaps: {} 
+        {
+          functionDeclarations: [
+            {
+              name: 'start_triage_flow',
+              description: 'Initiate the visual troubleshooting flowchart for complex faults.',
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  faultDescription: { type: Type.STRING, description: 'Brief description of the issue.' }
+                },
+                required: ['faultDescription']
+              }
+            },
+            {
+              name: 'generate_shift_report',
+              description: 'Generate a handover report for the current shift.',
+              parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+                name: 'manage_incident',
+                description: 'Update the status or delete a shift incident item.',
+                parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                        incidentId: { type: Type.STRING, description: 'The unique ID of the incident.' },
+                        action: { type: Type.STRING, enum: ['RESOLVED', 'MONITORING', 'DELETE'] }
+                    },
+                    required: ['incidentId', 'action']
+                }
+            },
+             {
+                name: 'start_new_shift',
+                description: 'Reset shift timer and clear logs for a new shift.',
+                parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+                name: 'set_alarm',
+                description: 'Set a reminder or alarm.',
+                parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                        message: { type: Type.STRING },
+                        type: { type: Type.STRING, enum: ['RELATIVE_MINUTES', 'ABSOLUTE_TIME'] },
+                        timeValue: { type: Type.STRING, description: 'Number of minutes (string) or HH:MM time.' }
+                    },
+                    required: ['message', 'type', 'timeValue']
+                }
+            },
+             {
+                name: 'calculate_optical_budget',
+                description: 'Calculate fiber optical loss budget.',
+                parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                        txPower: { type: Type.NUMBER },
+                        rxSensitivity: { type: Type.NUMBER },
+                        distance: { type: Type.NUMBER },
+                        wavelength: { type: Type.STRING },
+                        connectorCount: { type: Type.NUMBER },
+                        spliceCount: { type: Type.NUMBER }
+                    },
+                    required: ['txPower', 'rxSensitivity', 'distance']
+                }
+            },
+            {
+                name: 'update_notes',
+                description: 'Update, append, or clear the user\'s scratchpad notes.',
+                parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                        content: { type: Type.STRING, description: 'The text content to write.' },
+                        mode: { type: Type.STRING, enum: ['APPEND', 'OVERWRITE'], description: 'Whether to append to existing notes or overwrite them. Default is APPEND.' }
+                    },
+                    required: ['content']
+                }
+            }
+          ]
         }
       ]
     },
@@ -44,244 +154,434 @@ export const createChatSession = (customContext?: string, history?: any[]) => {
   });
 };
 
-// --- RAG / EMBEDDING SERVICES ---
-
-export const embedText = async (text: string): Promise<number[] | undefined> => {
+export const embedText = async (text: string): Promise<number[] | null> => {
+  if (!text || !text.trim()) return null;
   try {
-    const cleanText = text.replace(/\n/g, ' ').substring(0, 9000); // Limit context window
-    if (!cleanText) return undefined;
-
     const result = await ai.models.embedContent({
       model: 'text-embedding-004',
-      contents: cleanText,
-    });
-
-    return result.embedding?.values;
-  } catch (error) {
-    console.error("Embedding generation failed:", error);
-    return undefined;
-  }
-};
-
-const cosineSimilarity = (vecA: number[], vecB: number[]) => {
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    normA += vecA[i] * vecA[i];
-    normB += vecB[i] * vecB[i];
-  }
-  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-};
-
-export const findRelevantHistory = async (query: string, sessions: Session[]): Promise<string> => {
-  // 1. Generate embedding for current query
-  const queryEmbedding = await embedText(query);
-  if (!queryEmbedding) return '';
-
-  // 2. Search sessions with embeddings
-  const candidates = sessions
-    .filter(s => s.embedding && s.messages.length > 2) // Only check sessions with data
-    .map(s => ({
-      session: s,
-      score: cosineSimilarity(queryEmbedding, s.embedding!)
-    }))
-    .filter(c => c.score > 0.65) // Similarity threshold (tuned for text-embedding-004)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 2); // Top 2 relevant sessions
-
-  if (candidates.length === 0) return '';
-
-  // 3. Format context
-  const contextString = candidates.map(c => {
-     const summary = c.session.messages
-        .filter(m => m.role !== 'system')
-        .slice(-4) // Take last few exchanges
-        .map(m => `${m.role.toUpperCase()}: ${m.text.substring(0, 200)}`)
-        .join('\n');
-     return `[Previous Ticket "${c.session.title}" (Relevance: ${(c.score * 100).toFixed(0)}%)]:\n${summary}`;
-  }).join('\n\n');
-
-  return `\n\n=== RELEVANT PAST INCIDENTS (MEMORY) ===\n${contextString}\n\n`;
-};
-
-// --- EXISTING SERVICES ---
-
-export const generateTroubleshootingFlow = async (faultDescription: string): Promise<FlowNode | null> => {
-  try {
-    const prompt = `
-      Act as a Senior Utility Telecommunications Engineer. Create a troubleshooting flowchart for this fault: "${faultDescription}".
-      
-      Consider:
-      - Is this a Field Worker (Safety First)?
-      - Is this SCADA/OT (Grid Visibility)?
-      - Is this Corporate Network?
-
-      Return a SINGLE valid JSON object representing a decision tree.
-      
-      Schema:
-      {
-        "id": "root",
-        "title": "Initial Check",
-        "type": "command", // or 'action', 'decision', 'solution'
-        "description": "Brief explanation",
-        "command": "show interface ...", // Optional, valid Cisco/Juniper syntax OR Instruction (e.g. "Check Radio Profile")
-        "branches": [
-          {
-            "label": "If Result X",
-            "node": { ... nested node ... }
-          }
-        ]
-      }
-      
-      Limit depth to 3-4 levels.
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      // gemini-3-pro-preview is best for complex JSON generation
-      model: 'gemini-3-pro-preview',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
+      contents: {
+        parts: [{ text: text }]
       }
     });
-
-    const text = response.text;
-    if (!text) return null;
-
-    return JSON.parse(text) as FlowNode;
-  } catch (error) {
-    console.error("Failed to generate flowchart:", error);
+    return result.embedding?.values || null;
+  } catch (e) {
+    console.error("Embedding failed", e);
     return null;
   }
 };
 
-export const generateNetworkConfig = async (intent: string, vendor: string): Promise<string> => {
-  try {
+function cosineSimilarity(vecA: number[], vecB: number[]) {
+    let dotProduct = 0;
+    let magnitudeA = 0;
+    let magnitudeB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+        magnitudeA += vecA[i] * vecA[i];
+        magnitudeB += vecB[i] * vecB[i];
+    }
+    magnitudeA = Math.sqrt(magnitudeA);
+    magnitudeB = Math.sqrt(magnitudeB);
+    if (magnitudeA === 0 || magnitudeB === 0) return 0;
+    return dotProduct / (magnitudeA * magnitudeB);
+}
+
+export const findRelevantHistory = async (query: string, sessions: Session[]): Promise<string> => {
+  const queryEmbedding = await embedText(query);
+  if (!queryEmbedding) return "";
+
+  const relevant = sessions
+    .filter(s => s.embedding)
+    .map(s => ({
+      ...s,
+      score: cosineSimilarity(queryEmbedding, s.embedding!)
+    }))
+    .filter(s => s.score > 0.65)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  if (relevant.length === 0) return "";
+
+  return "RELEVANT PAST SESSIONS:\n" + relevant.map(s => 
+    `[Date: ${new Date(s.timestamp).toLocaleDateString()}] Title: ${s.title}\nSummary: ${s.messages.slice(0, 5).map(m => m.text).join(' ')}`
+  ).join('\n\n');
+};
+
+export const generateCommandDetails = async (input: string): Promise<CommandRef | null> => {
+    const prompt = `Generate a CommandRef object for: "${input}". 
+    Identify the Cisco IOS-XR and Juniper Junos equivalents. 
+    Category options: phys, l2, l3, ospf, bgp, mpls, logs, sec.
+    Return JSON only.`;
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            title: { type: Type.STRING },
+            cisco: { type: Type.STRING },
+            juniper: { type: Type.STRING },
+            desc: { type: Type.STRING },
+            category: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ['title', 'cisco', 'juniper', 'desc', 'category']
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: schema
+            }
+        });
+        if (response.text) {
+             return JSON.parse(response.text) as CommandRef;
+        }
+        return null;
+    } catch (e) {
+        console.error(e);
+        return null;
+    }
+};
+
+export const generateTroubleshootingFlow = async (input: string): Promise<FlowNode | null> => {
+    const prompt = `Generate a troubleshooting flowchart for: "${input}". Return a hierarchical JSON object (FlowNode).`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                systemInstruction: `Return a FlowNode object.
+                Interface:
+                interface FlowNode {
+                  id: string;
+                  title: string;
+                  description?: string;
+                  type: 'action' | 'command' | 'decision' | 'solution';
+                  command?: string;
+                  branches?: { label: string; node: FlowNode }[];
+                }
+                `
+            }
+        });
+        if (response.text) return JSON.parse(response.text) as FlowNode;
+        return null;
+    } catch(e) {
+        console.error(e);
+        return null;
+    }
+};
+
+// Internal parsing logic
+const parseOutageData = async (textData: string): Promise<OutageRecord[]> => {
+    // Increased specific instructions for high volume data extraction
     const prompt = `
-      Act as a Senior Network Implementation Engineer for a Power Utility.
-      Generate network configuration for **${vendor}**.
-      
-      Task: "${intent}"
-      
-      Requirements:
-      1. Provide the exact CLI commands.
-      2. Include comments (!) explaining complex lines.
-      3. If applicable, consider Utility-specific constraints (e.g. SCADA QoS, Multicast for Radio).
-      4. Format appropriately for the vendor.
-      5. Return ONLY the configuration text.
+    CRITICAL TASK: Extract **ALL** outage records from the raw text below.
+    
+    SOURCE: Ergon Energy Outage Finder
+    INSTRUCTION: 
+    1. Scan the ENTIRE text block.
+    2. Identify every single outage row/item listed. 
+    3. Do NOT summarize. Do NOT limit to top 5. If there are 50 outages, return 50 objects.
+    4. Extract fields: Suburb, Street/Location, Customers Affected, Status, Estimated Fix Time, Fault Description.
+    
+    RAW TEXT DATA (START):
+    ${textData.substring(0, 150000)} 
+    RAW TEXT DATA (END)
     `;
 
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // High logic capability for correct syntax
-      contents: prompt
-    });
+    const schema = {
+        type: Type.ARRAY,
+        items: {
+            type: Type.OBJECT,
+            properties: {
+                suburb: { type: Type.STRING },
+                location: { type: Type.STRING },
+                customersAffected: { type: Type.STRING },
+                status: { type: Type.STRING },
+                estFix: { type: Type.STRING },
+                description: { type: Type.STRING },
+                type: { type: Type.STRING },
+                startTime: { type: Type.STRING },
+                council: { type: Type.STRING },
+                eventId: { type: Type.STRING }
+            },
+            required: ['suburb', 'status', 'description', 'type']
+        }
+    };
 
-    return response.text || "Configuration generation failed.";
-  } catch (error) {
-    console.error("Config gen failed:", error);
-    return "Failed to generate configuration.";
-  }
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: schema
+            }
+        });
+        if (response.text) return JSON.parse(response.text) as OutageRecord[];
+        return [];
+    } catch(e) {
+        console.error(e);
+        return [];
+    }
+};
+
+export const fetchErgonOutages = async (): Promise<{records: OutageRecord[], source: 'LIVE' | 'SEARCH' | 'SIMULATION'}> => {
+  const targetUrl = 'https://www.ergon.com.au/network/outages/outage-finder/outage-finder-text-view';
+  
+  // Strategy 1: Proxy Fetch + AI Parse (High Fidelity for Raw Data)
+  // We use Jina because it renders the page into LLM-friendly Markdown, often preserving full tables.
+  try {
+    const proxyUrl = `https://r.jina.ai/${targetUrl}`;
+    const response = await fetch(proxyUrl);
+    if (response.ok) {
+      const text = await response.text();
+      // Basic validation to ensure we got content and not a block page
+      if (!text.includes('Access Denied') && text.length > 500) {
+        const records = await parseOutageData(text);
+        if (records.length > 0) return { records, source: 'LIVE' };
+      }
+    }
+  } catch (e) { console.log("Jina proxy failed, falling back..."); }
+
+  // Strategy 2: AI Search Grounding (Aggressive Extraction)
+  // If direct proxy fails, we ask the model to search and scrape.
+  try {
+     const prompt = `
+     Perform a comprehensive Google Search for "Ergon Energy Outage Finder Text View current outages list".
+     
+     Your Goal: Retrieve the FULL LIST of current outages.
+     
+     INSTRUCTIONS:
+     1. Find the official text view page or a reliable aggregator.
+     2. Read through the ENTIRE list of unplanned and planned outages available in the search grounding data.
+     3. Extract EVERY SINGLE entry you find. Do NOT stop after the first few.
+     4. Format exactly as a JSON array.
+     `;
+     
+     const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+           tools: [{ googleSearch: {} }],
+           responseMimeType: 'application/json'
+        }
+     });
+     
+     if (response.text) {
+        const records = JSON.parse(response.text) as OutageRecord[];
+        if (records.length > 0) return { records, source: 'SEARCH' };
+     }
+  } catch(e) { console.log("Search strategy failed"); }
+
+  // Fallback: If all else fails, return empty to trigger simulation mode in UI
+  return { records: [], source: 'SIMULATION' };
+}
+
+
+export const generateRegex = async (input: string): Promise<RegexResult | null> => {
+     const prompt = `Create Regex for: "${input}"`;
+     const schema = {
+        type: Type.OBJECT,
+        properties: {
+            cisco: { type: Type.STRING },
+            juniper: { type: Type.STRING },
+            grep: { type: Type.STRING },
+            explanation: { type: Type.STRING }
+        },
+        required: ['cisco', 'juniper', 'grep', 'explanation']
+     };
+     
+     try {
+         const response = await ai.models.generateContent({
+             model: 'gemini-3-flash-preview',
+             contents: prompt,
+             config: { responseMimeType: 'application/json', responseSchema: schema }
+         });
+         if(response.text) return JSON.parse(response.text) as RegexResult;
+         return null;
+     } catch(e) { return null; }
+};
+
+export const lookupMacVendor = async (mac: string): Promise<MacLookupResult | null> => {
+    const prompt = `Identify MAC OUI: ${mac}`;
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            vendor: { type: Type.STRING },
+            country: { type: Type.STRING },
+            isPrivate: { type: Type.BOOLEAN }
+        },
+        required: ['vendor', 'country', 'isPrivate']
+    };
+    try {
+         const response = await ai.models.generateContent({
+             model: 'gemini-3-flash-preview',
+             contents: prompt,
+             config: { responseMimeType: 'application/json', responseSchema: schema }
+         });
+         if(response.text) return JSON.parse(response.text) as MacLookupResult;
+         return null;
+    } catch(e) { return null; }
+};
+
+export const generateTopologyMermaid = async (input: string): Promise<string> => {
+    const prompt = `Generate a Mermaid JS graph definition (graph TD or graph LR) for the following network description or CLI output. Return ONLY the mermaid code, no markdown.
+    
+    Input: ${input}`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt
+        });
+        return response.text || '';
+    } catch(e) { return ''; }
 };
 
 export const analyzeRawLogs = async (logs: string): Promise<string> => {
-  try {
-    const prompt = `
-      Analyze the following raw logs (Network/SCADA/Radio). 
-      Identify the Root Cause, the Timeline of failure, and Recommend a fix.
-      Format the output in concise Markdown.
-      
-      Logs:
-      ${logs.substring(0, 15000)}
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Strong reasoning for log analysis
-      contents: prompt
-    });
-
-    return response.text || "Analysis failed.";
-  } catch (error) {
-    console.error("Log analysis failed:", error);
-    return "Failed to analyze logs.";
-  }
+    const prompt = `Analyze these network logs. Identify root cause, patterns, and suggest fixes. Be concise.
+    
+    Logs:
+    ${logs.substring(0, 10000)}`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: prompt
+        });
+        return response.text || '';
+    } catch(e) { return ''; }
 };
 
-export const generateRFO = async (conversationContext: string): Promise<string> => {
-  try {
-    const prompt = `
-      Based on the following Utility Telecoms troubleshooting session, draft a formal Reason For Outage (RFO) report.
-      
-      Structure:
-      1. **Incident Summary**: One sentence overview.
-      2. **Affected Service**: (e.g. SCADA, Field Radio, Corporate WAN).
-      3. **Root Cause**: Technical explanation.
-      4. **Timeline**: Estimated sequence of events.
-      5. **Resolution**: What fixed it.
-      
-      Session Context:
-      ${conversationContext.substring(0, 25000)}
-    `;
+export const generateNetworkConfig = async (intent: string, vendor: string): Promise<string> => {
+    const prompt = `Generate ${vendor} configuration for: ${intent}. Return only the config commands.`;
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: prompt
+        });
+        return response.text || '';
+    } catch(e) { return ''; }
+};
 
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // High quality text generation
-      contents: prompt
-    });
-
-    return response.text || "Failed to generate RFO.";
-  } catch (error) {
-    console.error("RFO generation failed:", error);
-    return "Failed to generate report.";
-  }
+export const assessChangeRisk = async (script: string): Promise<ChangeAuditResult | null> => {
+    const prompt = `Assess risk for this network change script.`;
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            score: { type: Type.NUMBER },
+            riskLevel: { type: Type.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] },
+            impactAnalysis: { type: Type.ARRAY, items: { type: Type.STRING } },
+            preChecks: { type: Type.ARRAY, items: { type: Type.STRING } },
+            postChecks: { type: Type.ARRAY, items: { type: Type.STRING } },
+            rollbackPlan: { type: Type.STRING }
+        },
+        required: ['score', 'riskLevel', 'impactAnalysis', 'preChecks', 'postChecks', 'rollbackPlan']
+    };
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: prompt,
+            config: { responseMimeType: 'application/json', responseSchema: schema }
+        });
+        if (response.text) return JSON.parse(response.text) as ChangeAuditResult;
+        return null;
+    } catch(e) { return null; }
 };
 
 export const generateCommunication = async (type: string, context: string): Promise<string> => {
-  try {
-    const now = new Date();
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = days[now.getDay()];
-    const dd = String(now.getDate()).padStart(2, '0');
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yy = String(now.getFullYear()).slice(-2);
-    const dateStr = `${dayName} ${dd}/${mm}/${yy}`;
+    const prompt = `Draft a ${type} based on: ${context}`;
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt
+        });
+        return response.text || '';
+    } catch(e) { return ''; }
+};
 
-    const prompt = `
-      Act as a Professional Utility NOC Communication Specialist.
-      Draft a **${type}** based on the context.
+export const generateIncidentSummary = async (session: Session, focus?: string): Promise<string> => {
+     const prompt = `Summarize incident from session. Focus: ${focus || 'General'}.
+     Session: ${JSON.stringify(session.messages)}`;
+     try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt
+        });
+        return response.text || '';
+     } catch(e) { return ''; }
+};
 
-      Context:
-      ${context.substring(0, 15000)}
+export const detectSessionIncidents = async (session: Session): Promise<{title: string, timestamp: number, status: string}[]> => {
+    const prompt = `Detect incidents in session. Return JSON array.`;
+    const schema = {
+        type: Type.ARRAY,
+        items: {
+            type: Type.OBJECT,
+            properties: {
+                title: { type: Type.STRING },
+                timestamp: { type: Type.NUMBER },
+                status: { type: Type.STRING }
+            },
+            required: ['title', 'timestamp', 'status']
+        }
+    };
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt + `\n${JSON.stringify(session.messages)}`,
+            config: { responseMimeType: 'application/json', responseSchema: schema }
+        });
+        if (response.text) return JSON.parse(response.text);
+        return [];
+    } catch(e) { return []; }
+};
 
-      Requirements:
-      1. Tone: Professional, Clear.
-         - 'Customer Update': Empathetic.
-         - 'Control Room Alert': Urgent, Concise, Safety-focused.
-         - 'Shift Handover': Brief, bulleted.
-      2. Format: Standard Email or Ticket Update.
-      3. SUBJECT LINE MANDATE: For Shift Handover, use: "Subject: Shift Handover - ${dateStr}"
-    `;
+export const generateGeoFiberPath = async (query: string): Promise<FiberPathData | null> => {
+    const prompt = `Generate simulated fiber path data for: ${query}. Return JSON.`;
+    try {
+        const response = await ai.models.generateContent({
+             model: 'gemini-3-flash-preview',
+             contents: prompt,
+             config: { responseMimeType: 'application/json' }
+        });
+        if (response.text) return JSON.parse(response.text) as FiberPathData;
+        return null;
+    } catch(e) { return null; }
+};
 
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt
-    });
-
-    return response.text || "Failed to generate communication.";
-  } catch (error) {
-    console.error("Comm generation failed:", error);
-    return "Failed to generate text.";
-  }
+export const generateTicketDraft = async (messages: Message[]): Promise<TicketDraft | null> => {
+    const prompt = `Draft a ticket based on these messages.`;
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            shortDescription: { type: Type.STRING },
+            description: { type: Type.STRING },
+            configurationItem: { type: Type.STRING },
+            impact: { type: Type.STRING },
+            urgency: { type: Type.STRING },
+            workNotes: { type: Type.STRING }
+        },
+        required: ['shortDescription', 'description', 'configurationItem', 'impact', 'urgency', 'workNotes']
+    };
+    try {
+         const response = await ai.models.generateContent({
+             model: 'gemini-3-flash-preview',
+             contents: prompt + `\n${JSON.stringify(messages)}`,
+             config: { responseMimeType: 'application/json', responseSchema: schema }
+         });
+         if (response.text) return JSON.parse(response.text) as TicketDraft;
+         return null;
+    } catch(e) { return null; }
 };
 
 export const generateShiftHandover = async (sessions: Session[]): Promise<string> => {
   try {
-    // 1. Prepare session summaries with FULL transcripts
     const sessionSummaries = sessions.map(s => {
-      // Filter out empty messages to reduce noise
       const validMessages = s.messages.filter(m => m.text && m.text.trim().length > 0);
-      
-      // Construct full transcript
       const context = validMessages
         .map(m => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.role.toUpperCase()}: ${m.text}`)
         .join('\n');
@@ -295,27 +595,24 @@ ${context}
     }).join('\n\n');
 
     const now = new Date();
-    const dateStr = now.toLocaleDateString();
-    const timeStr = now.toLocaleTimeString();
-
     const prompt = `
       Act as a Lead Utility NOC Engineer.
-      Generate a **Shift Handover Report** based on the following session logs from the last shift.
+      Generate a **Highly Concise Shift Handover Report** (TL;DR style) based on the session logs.
+      
+      **Current Time:** ${now.toLocaleDateString()} ${now.toLocaleTimeString()}
 
-      **Current Time:** ${dateStr} ${timeStr}
-
-      **Report Structure:**
-      1. **Shift Summary**: High-level overview.
-      2. **Incidents Handled**: Grouped by Type (SCADA / Radio / Network / Mobility).
-         - Format: [Status] Service - Brief Description
-      3. **Pending Actions**: Immediate attention items.
+      **Strict Formatting Rules:**
+      1. **Critical Actions (Must Read):** Max 3 bullet points of PENDING/URGENT items only. If none, say "None".
+      2. **Incident Manifest:** Single-line bullets only. 
+         - Format: \`[TIME] [TYPE] Short Description -> Outcome\`
+      3. **No fluff.** No long paragraphs.
 
       **Session Logs:**
       ${sessionSummaries.substring(0, 100000)}
     `;
 
     const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // High reasoning to summarize multiple contexts and separate incidents
+      model: 'gemini-3-pro-preview',
       contents: prompt
     });
 
@@ -324,374 +621,5 @@ ${context}
   } catch (error) {
     console.error("Handover generation failed:", error);
     return "Error generating handover report.";
-  }
-};
-
-export const generateIncidentSummary = async (session: Session, focusTopic?: string): Promise<string> => {
-  try {
-    const validMessages = session.messages.filter(m => m.text && m.text.trim().length > 0);
-    const context = validMessages
-      .map(m => `[${new Date(m.timestamp).toLocaleTimeString()}] ${m.role.toUpperCase()}: ${m.text}`)
-      .join('\n');
-
-    let instruction = "Review the following troubleshooting session transcript and provide a concise, up-to-date Incident Summary.";
-    
-    if (focusTopic) {
-        instruction = `
-        Review the following session transcript.
-        **CRITICAL TASK:** Isolate and summarize ONLY the events related to: "**${focusTopic}**".
-        Ignore unrelated chatter.
-        `;
-    }
-
-    const prompt = `
-      Act as a Senior Utility Telecoms Engineer.
-      ${instruction}
-      
-      **Transcript:**
-      ${context}
-      
-      **Output Format (Markdown):**
-      **INCIDENT FOCUS: ${focusTopic || 'General Summary'}**
-      
-      *   **Service Type:** [SCADA / Radio / Mobility / WAN]
-      *   **Current Status:** [Resolved/Monitoring/Pending]
-      *   **Summary:** (2-3 sentences)
-      *   **Key Actions:** (Bulleted list)
-      *   **Findings:**
-      *   **Next Steps:**
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: prompt
-    });
-
-    return response.text || "Failed to generate incident summary.";
-  } catch (error) {
-    console.error("Incident summary failed:", error);
-    return "Error generating incident summary.";
-  }
-};
-
-export interface DetectedIncident {
-  title: string;
-  timestamp: string;
-  description: string;
-  status: 'OPEN' | 'RESOLVED' | 'MONITORING';
-}
-
-export const detectSessionIncidents = async (session: Session): Promise<DetectedIncident[]> => {
-  try {
-     const userMsgs = session.messages.filter(m => m.role === 'user');
-     if (userMsgs.length === 0) return [];
-
-     if (userMsgs.length <= 1) {
-         const txt = userMsgs[0]?.text || 'Empty';
-         return [{
-             title: txt.substring(0, 75),
-             timestamp: userMsgs[0]?.timestamp.toISOString() || new Date().toISOString(),
-             description: txt,
-             status: 'OPEN'
-         }];
-     }
-
-     const context = session.messages.map(m => `[${new Date(m.timestamp).toISOString()}] ${m.role}: ${m.text}`).join('\n');
-
-     const prompt = `
-     Analyze this support session log. Identify distinct technical incidents.
-     
-     **Context:** Utility NOC (SCADA, Radio, Networking, Field Support).
-     
-     Rules:
-     1. Group related sequential messages into a SINGLE incident.
-     2. Create a specific title (e.g. "Feeder 1234 Protection Fail" or "Radio Site 5 Down").
-     3. Status: 'OPEN', 'RESOLVED', 'MONITORING'.
-     
-     Log:
-     ${context.substring(0, 15000)}
-
-     Return a JSON array:
-     [ { "title": "string", "timestamp": "ISO string", "description": "short summary", "status": "OPEN" | "RESOLVED" | "MONITORING" } ]
-     `;
-
-     // Use retryWithBackoff here to handle rate limiting during batch processing
-     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-        model: 'gemini-3-flash-preview', 
-        contents: prompt,
-        config: { responseMimeType: 'application/json' }
-     }));
-
-     const text = response.text;
-     if (!text) return [];
-     
-     const incidents = JSON.parse(text) as DetectedIncident[];
-     if (!Array.isArray(incidents)) return [];
-     return incidents;
-
-  } catch (e) {
-      console.error("Failed to detect incidents", e);
-      return [{
-         title: session.title,
-         timestamp: new Date(session.timestamp).toISOString(),
-         description: session.title,
-         status: 'OPEN'
-      }];
-  }
-};
-
-export interface OutageRecord {
-  location: string;
-  suburb: string;
-  description: string;
-  status: string;
-  type: string;
-  estFix: string;
-  customersAffected: string;
-}
-
-export const parseOutageData = async (rawHtml: string): Promise<OutageRecord[]> => {
-  try {
-    // 1. Client-side HTML cleanup using DOMParser
-    // HTML pages are mostly noise (scripts, styles, nav). Truncating raw HTML kills data at the end of the list.
-    // Parsing it to text first is far more efficient and ensures we get the full list.
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(rawHtml, 'text/html');
-
-    // Remove irrelevant elements to reduce token usage and noise
-    const trash = doc.querySelectorAll('script, style, iframe, svg, nav, header, footer, .header, .footer, #header, #footer');
-    trash.forEach(el => el.remove());
-
-    // Extract pure text content. We preserve newlines to help Gemini distinguish records.
-    const cleanText = doc.body.innerText;
-
-    const prompt = `
-      You are an Outage Data Parser.
-      The following is the clean TEXT CONTENT extracted from the Ergon Energy Outage Finder.
-      
-      Your task:
-      1. Identify individual outage records from the text.
-      2. Map them to a JSON object with these keys:
-         - location (Street/Area)
-         - suburb
-         - description (Reason/Fault type)
-         - status (e.g., Under Investigation, Work in Progress)
-         - type (Planned or Unplanned)
-         - estFix (Estimated fix time)
-         - customersAffected (Number of customers)
-      
-      3. Return a JSON Array of these objects.
-      4. If no outages are found, return an empty array [].
-      
-      TEXT CONTENT:
-      ${cleanText.substring(0, 200000)} 
-    `;
-    // Increased substring limit significantly as text is much denser than HTML
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview', 
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const text = response.text;
-    if (!text) return null;
-
-    return JSON.parse(text) as OutageRecord[];
-  } catch (error) {
-    console.error("Outage parsing failed:", error);
-    return [];
-  }
-};
-
-export interface ChangeAuditResult {
-  score: number;
-  riskLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-  impactAnalysis: string[];
-  preChecks: string[];
-  postChecks: string[];
-  rollbackPlan: string;
-}
-
-export const assessChangeRisk = async (script: string): Promise<ChangeAuditResult | null> => {
-  try {
-    const prompt = `
-      Act as a Senior Network Reliability Engineer.
-      Audit the following network configuration change script for risk.
-      
-      Script:
-      ${script.substring(0, 15000)}
-      
-      Output a JSON object with:
-      - score: number (0-100, where 100 is catastrophic risk)
-      - riskLevel: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
-      - impactAnalysis: array of strings (potential side effects, outage risks)
-      - preChecks: array of strings (specific CLI commands to run BEFORE change to benchmark state)
-      - postChecks: array of strings (specific CLI commands to run AFTER to verify success)
-      - rollbackPlan: string (exact CLI commands to revert changes if they fail)
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Reasoning needed for risk assessment
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const text = response.text;
-    if (!text) return null;
-
-    return JSON.parse(text) as ChangeAuditResult;
-  } catch (error) {
-    console.error("Change audit failed:", error);
-    return null;
-  }
-};
-
-export const generateTopologyMermaid = async (input: string): Promise<string> => {
-  try {
-    const prompt = `
-      Act as a Network Topology Mapper.
-      Convert the following text (which may be CLI output like 'show lldp neighbors', or a natural language description) into a Mermaid.js graph definition.
-      
-      Input:
-      ${input.substring(0, 20000)}
-      
-      Rules:
-      1. Return ONLY the Mermaid code. No markdown fences.
-      2. Start with 'graph TD' or 'graph LR'.
-      3. If interfaces are present, use them as edge labels: A -- Ge0/0/1 --> B
-      4. Style the nodes to look like network devices if possible (classDef).
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt
-    });
-
-    let text = response.text || '';
-    // Remove markdown code blocks if present
-    text = text.replace(/```mermaid/g, '').replace(/```/g, '').trim();
-
-    // Basic validation
-    if (!text.startsWith('graph') && !text.startsWith('flowchart')) {
-       return 'graph TD;\nError[Could not generate topology]';
-    }
-
-    return text;
-  } catch (error) {
-    console.error("Topology gen failed:", error);
-    return 'graph TD;\nError[Generation failed]';
-  }
-};
-
-export const generateCommandDetails = async (input: string): Promise<CommandRef | null> => {
-  try {
-    const prompt = `
-      Act as a Network Engineer.
-      Create a standardized command library entry based on this input: "${input}".
-
-      Return a SINGLE JSON object with this schema:
-      {
-        "title": "Short Title (Max 25 chars)",
-        "cisco": "Cisco IOS/XR command",
-        "juniper": "Juniper Junos command",
-        "desc": "Brief description (Max 100 chars)",
-        "category": ["array", "of", "ids"] // ids from: ['phys', 'l2', 'l3', 'mpls', 'bgp', 'logs', 'e2e']
-      }
-
-      If the input is specific to one vendor, infer the other.
-      Ensure strict JSON format.
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' }
-    });
-
-    return JSON.parse(response.text || '{}') as CommandRef;
-  } catch (error) {
-    console.error("Command gen failed:", error);
-    return null;
-  }
-};
-
-export interface RegexResult {
-  cisco: string;
-  juniper: string;
-  grep: string;
-  explanation: string;
-}
-
-export const generateRegex = async (description: string): Promise<RegexResult | null> => {
-  try {
-    const prompt = `
-      Act as a Network Engineering CLI Assistant.
-      Convert the following natural language filtering requirement into specific CLI pipe commands (regex).
-      
-      Requirement: "${description}"
-      
-      Return a SINGLE JSON object with these keys:
-      - cisco: The pipe command for Cisco IOS/XR (e.g., | include x | exclude y). Use 'include' (not grep) for IOS standard.
-      - juniper: The pipe command for Juniper Junos (e.g., | match x | except y)
-      - grep: Standard Linux grep command (e.g., | grep -E "x")
-      - explanation: Brief explanation of the logic (max 10 words).
-      
-      Rules:
-      1. If the input describes a "show" command, include it. If it just describes filtering, start with the pipe (|).
-      2. Handle case insensitivity if implied (use -i for grep, or just standard match for others).
-      3. Focus on standard router CLI syntax.
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' }
-    });
-
-    const text = response.text;
-    if (!text) return null;
-    return JSON.parse(text) as RegexResult;
-  } catch (error) {
-    console.error("Regex gen failed:", error);
-    return null;
-  }
-};
-
-export interface MacLookupResult {
-  vendor: string;
-  country: string;
-  isPrivate: boolean;
-}
-
-export const lookupMacVendor = async (mac: string): Promise<MacLookupResult | null> => {
-  try {
-    const prompt = `
-      Identify the vendor/manufacturer for the following MAC Address OUI: "${mac}".
-      
-      Return a SINGLE JSON object:
-      {
-        "vendor": "Company Name (e.g., Cisco Systems, Apple Inc.)",
-        "country": "Country Code (e.g., US, CN, TW)",
-        "isPrivate": boolean // true if locally administered range or private randomization
-      }
-      
-      If unknown, return vendor as "Unknown OUI".
-    `;
-
-    const response: GenerateContentResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' }
-    });
-
-    return JSON.parse(response.text || '{}') as MacLookupResult;
-  } catch (error) {
-    console.error("MAC lookup failed:", error);
-    return null;
   }
 };

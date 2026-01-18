@@ -1,62 +1,78 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, FileDiff, StickyNote, ArrowRight, X, ScanSearch, Loader2, AlertTriangle, CheckCircle2, Binary, Search, Copy, Zap, Cpu, ScanLine } from 'lucide-react';
+import { Calculator, FileDiff, StickyNote, ArrowRight, X, ScanSearch, Loader2, AlertTriangle, CheckCircle2, Binary, Search, Copy, Zap, Cpu, ScanLine, LayoutGrid, MousePointer2 } from 'lucide-react';
 import { generateRegex, RegexResult, lookupMacVendor, MacLookupResult } from '../services/gemini';
 // analyzeRawLogs import removed as it is no longer used here
 
-const NetworkTools: React.FC = () => {
+interface Props {
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
+  notes?: string;
+  onNotesChange?: (notes: string) => void;
+}
+
+const NetworkTools: React.FC<Props> = ({ activeTab, onTabChange, notes, onNotesChange }) => {
   const activeTabClass = "border-cyan-400 text-cyan-400 bg-cyan-950/10";
   const inactiveTabClass = "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/30";
   
-  const [activeTab, setActiveTab] = useState<'ip' | 'diff' | 'regex' | 'optical' | 'mac' | 'notes'>('notes');
+  const [internalTab, setInternalTab] = useState('notes');
+  const currentTab = activeTab || internalTab;
+
+  const handleTabChange = (tab: string) => {
+    if (onTabChange) {
+      onTabChange(tab);
+    } else {
+      setInternalTab(tab);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-slate-900/40 rounded-xl border border-slate-800/50 overflow-hidden relative shadow-inner">
       <div className="flex border-b border-slate-800 bg-slate-950/30 overflow-x-auto scrollbar-hide">
         <button
-          onClick={() => setActiveTab('ip')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'ip' ? activeTabClass : inactiveTabClass}`}
+          onClick={() => handleTabChange('ip')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'ip' ? activeTabClass : inactiveTabClass}`}
         >
           <Calculator size={14} /> IP Calc
         </button>
         <button
-          onClick={() => setActiveTab('mac')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'mac' ? 'border-sky-400 text-sky-400 bg-sky-950/10' : inactiveTabClass}`}
+          onClick={() => handleTabChange('mac')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'mac' ? 'border-sky-400 text-sky-400 bg-sky-950/10' : inactiveTabClass}`}
         >
           <ScanLine size={14} /> MAC Scan
         </button>
         <button
-          onClick={() => setActiveTab('diff')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'diff' ? 'border-amber-400 text-amber-400 bg-amber-950/10' : inactiveTabClass}`}
+          onClick={() => handleTabChange('diff')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'diff' ? 'border-amber-400 text-amber-400 bg-amber-950/10' : inactiveTabClass}`}
         >
           <FileDiff size={14} /> Diff
         </button>
         <button
-          onClick={() => setActiveTab('regex')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'regex' ? 'border-violet-400 text-violet-400 bg-violet-950/10' : inactiveTabClass}`}
+          onClick={() => handleTabChange('regex')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'regex' ? 'border-violet-400 text-violet-400 bg-violet-950/10' : inactiveTabClass}`}
         >
           <Search size={14} /> Regex
         </button>
         <button
-          onClick={() => setActiveTab('optical')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'optical' ? 'border-orange-400 text-orange-400 bg-orange-950/10' : inactiveTabClass}`}
+          onClick={() => handleTabChange('optical')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'optical' ? 'border-orange-400 text-orange-400 bg-orange-950/10' : inactiveTabClass}`}
         >
           <Zap size={14} /> Optical
         </button>
         <button
-          onClick={() => setActiveTab('notes')}
-          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${activeTab === 'notes' ? 'border-emerald-400 text-emerald-400 bg-emerald-950/10' : inactiveTabClass}`}
+          onClick={() => handleTabChange('notes')}
+          className={`flex-1 py-3 px-2 text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap ${currentTab === 'notes' ? 'border-emerald-400 text-emerald-400 bg-emerald-950/10' : inactiveTabClass}`}
         >
           <StickyNote size={14} /> Notes
         </button>
       </div>
 
       <div className="flex-1 overflow-hidden p-5 relative">
-        {activeTab === 'ip' && <SubnetCalculator />}
-        {activeTab === 'mac' && <MacOuiLookup />}
-        {activeTab === 'diff' && <SimpleDiff />}
-        {activeTab === 'regex' && <RegexBuilder />}
-        {activeTab === 'optical' && <OpticalCalculator />}
-        {activeTab === 'notes' && <Scratchpad />}
+        {currentTab === 'ip' && <SubnetCalculator />}
+        {currentTab === 'mac' && <MacOuiLookup />}
+        {currentTab === 'diff' && <SimpleDiff />}
+        {currentTab === 'regex' && <RegexBuilder />}
+        {currentTab === 'optical' && <OpticalCalculator />}
+        {currentTab === 'notes' && <Scratchpad notes={notes} onNotesChange={onNotesChange} />}
       </div>
     </div>
   );
@@ -65,6 +81,7 @@ const NetworkTools: React.FC = () => {
 const SubnetCalculator = () => {
   const [input, setInput] = useState('192.168.1.1/24');
   const [result, setResult] = useState<any>(null);
+  const [vizMask, setVizMask] = useState<number | null>(null);
 
   const calculate = (val: string) => {
     setInput(val);
@@ -72,11 +89,9 @@ const SubnetCalculator = () => {
       const [ip, maskStr] = val.split('/');
       if (!ip) { setResult(null); return; }
       
-      // Default to /32 if no mask provided so we can still do conversions
       const mask = maskStr ? parseInt(maskStr) : 32;
       if (isNaN(mask) || mask < 0 || mask > 32) { setResult(null); return; }
 
-      // Simple Calculation Logic
       const ipParts = ip.split('.').map(Number);
       if (ipParts.length !== 4 || ipParts.some(p => isNaN(p) || p < 0 || p > 255)) { setResult(null); return; }
 
@@ -100,6 +115,8 @@ const SubnetCalculator = () => {
 
       setResult({
         network: toIp(networkNum),
+        networkNum: networkNum, // Store for visualizer
+        currentMask: mask,      // Store for visualizer
         broadcast: toIp(broadcastNum),
         mask: toIp(maskNum),
         hosts: hosts > 0 ? hosts : 0,
@@ -108,12 +125,91 @@ const SubnetCalculator = () => {
         ipBinary: toBinary(ipNum),
         maskBinary: toBinary(maskNum)
       });
+      
+      // Reset viz on drastic change, or default to next logical step
+      setVizMask(null);
+
     } catch (e) {
       setResult(null);
     }
   };
 
   useEffect(() => { calculate(input) }, []);
+
+  // CIDR Visualizer Logic
+  const renderVisualizer = () => {
+    if (!result || !result.currentMask) return null;
+    
+    const current = result.currentMask;
+    const target = vizMask || current;
+    const diff = target - current;
+    const count = Math.pow(2, diff);
+
+    // Limit visualization to prevent browser crash
+    if (count > 512) {
+        return (
+            <div className="flex flex-col items-center justify-center p-8 text-slate-500 border border-slate-800 rounded-lg bg-slate-950/30 border-dashed">
+                <AlertTriangle size={32} className="mb-2" />
+                <p className="text-xs">Too many subnets to visualize ({count}).</p>
+                <p className="text-[10px]">Select a smaller subdivision range.</p>
+            </div>
+        );
+    }
+
+    const items = [];
+    const blockSize = Math.pow(2, 32 - target);
+    
+    // Int to IP helper
+    const toIp = (num: number) => [(num >>> 24) & 0xFF, (num >>> 16) & 0xFF, (num >>> 8) & 0xFF, num & 0xFF].join('.');
+
+    for (let i = 0; i < count; i++) {
+        const subnetBase = (result.networkNum >>> 0) + (i * blockSize);
+        const subnetIp = toIp(subnetBase);
+        
+        let label = `/${target}`;
+        let subText = "";
+        let colorClass = "bg-slate-800 border-slate-700 text-slate-400";
+
+        if (target === 32) {
+            // Individual IPs
+            label = subnetIp.split('.')[3]; // Just last octet
+            if (subnetBase === (result.networkNum >>> 0)) {
+                colorClass = "bg-amber-900/40 border-amber-500/50 text-amber-400";
+                subText = "Network";
+            } else if (subnetBase === ((result.networkNum >>> 0) + Math.pow(2, 32 - current) - 1)) {
+                 colorClass = "bg-red-900/40 border-red-500/50 text-red-400";
+                 subText = "Broadcast";
+            } else {
+                 colorClass = "bg-emerald-900/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/40";
+                 subText = "Host";
+            }
+        } else {
+            // Subnet Blocks
+            const subBroadcast = toIp(subnetBase + blockSize - 1);
+            colorClass = "bg-cyan-900/10 border-cyan-500/20 hover:bg-cyan-900/30 hover:border-cyan-500/50 text-cyan-300";
+            subText = `Range: .${subnetIp.split('.')[3]} - .${subBroadcast.split('.')[3]}`;
+        }
+
+        items.push(
+            <div key={i} className={`p-1.5 rounded border flex flex-col items-center justify-center text-center transition-all ${colorClass} min-h-[50px]`}>
+                <div className="font-mono text-[10px] xl:text-xs font-bold w-full break-all leading-tight">{target === 32 ? label : subnetIp}</div>
+                {target !== 32 && <div className="text-[9px] font-mono opacity-70">{label}</div>}
+                {subText && <div className="text-[8px] uppercase tracking-wider opacity-60 mt-0.5">{subText}</div>}
+            </div>
+        );
+    }
+
+    return (
+        <div className={`grid gap-2 mt-2 ${
+            target === 32 ? 'grid-cols-8 sm:grid-cols-10' : 
+            count <= 4 ? 'grid-cols-1 sm:grid-cols-2' : 
+            count <= 16 ? 'grid-cols-2 sm:grid-cols-4' : 
+            'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'
+        }`}>
+            {items}
+        </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-5 h-full overflow-y-auto scrollbar-hide pr-1">
@@ -145,6 +241,61 @@ const SubnetCalculator = () => {
                <InfoBox label="IP Decimal" value={result.ipDecimal} color="text-amber-400" />
                <InfoBox label="IP Binary" value={result.ipBinary} fontClass="text-[10px] tracking-widest text-cyan-200" />
                <InfoBox label="Netmask Binary" value={result.maskBinary} fontClass="text-[10px] tracking-widest text-slate-500" />
+           </div>
+
+           {/* CIDR Visualizer Section */}
+           <div className="pt-4 border-t border-slate-800 animate-in slide-in-from-bottom-2 duration-500">
+               <div className="flex items-center justify-between mb-3">
+                   <div className="flex items-center gap-2">
+                       <LayoutGrid size={16} className="text-cyan-400" />
+                       <span className="text-xs font-bold text-slate-200 uppercase tracking-wide">CIDR Map</span>
+                   </div>
+                   
+                   {/* Visualization Controls */}
+                   <div className="flex gap-1 overflow-x-auto max-w-[350px] scrollbar-hide">
+                       {[...Array(8)].map((_, i) => {
+                           const maskOption = result.currentMask + i;
+                           if (maskOption > 32) return null;
+                           // Only show up to +6 steps to keep grid reasonable (max 64 items) unless it's /32
+                           if (i > 6 && maskOption !== 32) return null; 
+                           
+                           return (
+                               <button
+                                   key={maskOption}
+                                   onClick={() => setVizMask(maskOption === result.currentMask ? null : maskOption)}
+                                   className={`px-2 py-1 rounded text-[10px] font-bold font-mono border transition-all whitespace-nowrap
+                                       ${(vizMask === maskOption) || (!vizMask && maskOption === result.currentMask)
+                                           ? 'bg-cyan-600 border-cyan-400 text-white' 
+                                           : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                                       }
+                                   `}
+                               >
+                                   /{maskOption}
+                               </button>
+                           );
+                       })}
+                   </div>
+               </div>
+
+               <div className="bg-slate-950/50 rounded-lg p-3 border border-slate-800">
+                   {/* Legend for /32 view */}
+                   {(vizMask === 32 || (!vizMask && result.currentMask === 32)) && (
+                       <div className="flex gap-3 mb-2 justify-center">
+                           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-amber-500"></div><span className="text-[9px] text-slate-400 uppercase">Network</span></div>
+                           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-[9px] text-slate-400 uppercase">Usable</span></div>
+                           <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-red-500"></div><span className="text-[9px] text-slate-400 uppercase">Broadcast</span></div>
+                       </div>
+                   )}
+                   
+                   {renderVisualizer()}
+                   
+                   {!vizMask && result.currentMask < 32 && (
+                       <div className="text-center mt-2 text-[10px] text-slate-600 font-mono flex items-center justify-center gap-1">
+                           <MousePointer2 size={10} />
+                           Select a mask above to visualize subdivisions
+                       </div>
+                   )}
+               </div>
            </div>
         </div>
       ) : (
@@ -536,22 +687,32 @@ const OpticalCalculator = () => {
   );
 };
 
-const Scratchpad = () => {
-  const [notes, setNotes] = useState(() => localStorage.getItem('eqnoc_notes') || '');
+interface ScratchpadProps {
+    notes?: string;
+    onNotesChange?: (val: string) => void;
+}
+
+const Scratchpad: React.FC<ScratchpadProps> = ({ notes = '', onNotesChange }) => {
+  // Use a local state for input to allow smooth typing, but sync with props
+  const [internalNotes, setInternalNotes] = useState(notes);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
 
+  // Update internal state when external prop changes (e.g. AI updates it)
   useEffect(() => {
-    const handler = setTimeout(() => {
-      localStorage.setItem('eqnoc_notes', notes);
-      setSaveStatus('saved');
-    }, 800);
-
-    return () => clearTimeout(handler);
+    setInternalNotes(notes);
   }, [notes]);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setNotes(e.target.value);
+    const newVal = e.target.value;
+    setInternalNotes(newVal);
     setSaveStatus('saving');
+    
+    // Propagate change
+    if (onNotesChange) {
+        onNotesChange(newVal);
+        // Simple visual feedback timeout
+        setTimeout(() => setSaveStatus('saved'), 800);
+    }
   };
 
   return (
@@ -562,7 +723,7 @@ const Scratchpad = () => {
        <textarea
           className="flex-1 bg-slate-950/30 border border-slate-800/50 rounded-lg p-4 pt-8 text-sm font-mono text-emerald-200/90 resize-none focus:outline-none focus:border-emerald-500/30 placeholder-slate-700 leading-7"
           placeholder="// Scratchpad for logs, MACs, or thoughts..."
-          value={notes}
+          value={internalNotes}
           onChange={handleChange}
           spellCheck={false}
        />

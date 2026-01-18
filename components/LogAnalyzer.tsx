@@ -6,15 +6,19 @@ interface Props {
   // Optional controlled props for War Room persistence
   persistedLogs?: string;
   onLogsChange?: (logs: string) => void;
+  // New props for AI Context awareness
+  analysisResult?: string | null;
+  onAnalysisChange?: (result: string | null) => void;
 }
 
-const LogAnalyzer: React.FC<Props> = ({ persistedLogs, onLogsChange }) => {
+const LogAnalyzer: React.FC<Props> = ({ persistedLogs, onLogsChange, analysisResult, onAnalysisChange }) => {
   const [internalLogs, setInternalLogs] = useState('');
-  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [internalAnalysis, setInternalAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // Use props if available, otherwise internal state
   const logs = persistedLogs !== undefined ? persistedLogs : internalLogs;
+  const analysis = analysisResult !== undefined ? analysisResult : internalAnalysis;
 
   const handleLogsChange = (val: string) => {
     if (onLogsChange) {
@@ -24,11 +28,19 @@ const LogAnalyzer: React.FC<Props> = ({ persistedLogs, onLogsChange }) => {
     }
   };
 
+  const handleAnalysisChange = (val: string | null) => {
+    if (onAnalysisChange) {
+      onAnalysisChange(val);
+    } else {
+      setInternalAnalysis(val);
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!logs.trim()) return;
     setIsAnalyzing(true);
     const result = await analyzeRawLogs(logs);
-    setAnalysis(result);
+    handleAnalysisChange(result);
     setIsAnalyzing(false);
   };
 
@@ -78,7 +90,7 @@ Jun 14 10:00:02 core-rtr-01 interface[444]: %LINK-3-UPDOWN: Interface GigabitEth
                    <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wide flex items-center gap-2">
                       <CheckCircle2 size={14} /> AI Findings
                    </h4>
-                   <button onClick={() => setAnalysis(null)} className="text-slate-500 hover:text-white" title="Clear Analysis"><AlertTriangle size={12} /></button>
+                   <button onClick={() => handleAnalysisChange(null)} className="text-slate-500 hover:text-white" title="Clear Analysis"><AlertTriangle size={12} /></button>
                 </div>
                 <div className="prose prose-invert prose-sm text-xs text-slate-300">
                     <pre className="whitespace-pre-wrap font-sans text-slate-300 leading-6">{analysis}</pre>

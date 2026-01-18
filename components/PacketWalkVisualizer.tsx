@@ -104,6 +104,73 @@ const SCENARIOS: Scenario[] = [
     ]
   },
   {
+    id: 'l2vpn-vpws',
+    title: 'L2VPN VPWS (EoMPLS)',
+    description: 'Layer 2 Point-to-Point emulation (Pseudowire) transparently transporting Ethernet frames.',
+    steps: [
+      {
+        id: 'step-1',
+        device: 'Customer Switch A',
+        deviceType: 'server',
+        action: 'Send Ethernet Frame',
+        operation: 'NONE',
+        description: 'Customer switch sends a standard tagged Ethernet frame to the Provider Edge.',
+        concept: 'Transparency: The provider network acts as a single long cable. The customer L2 headers are preserved.',
+        headers: [
+          { id: 'eth1', type: 'ETH', label: 'Ethernet', detail: 'Dst: PE-Ingress', color: 'bg-slate-600 border-slate-500', fields: { 'Src MAC': 'Cust-A-MAC', 'Dst MAC': 'PE-Ingress-MAC', 'VLAN': '10' } },
+          { id: 'vlan1', type: 'VLAN', label: 'VLAN 10', detail: 'ID: 10', color: 'bg-pink-600 border-pink-500', fields: { 'ID': 10, 'Priority': 0 } },
+          { id: 'ip1', type: 'IP', label: 'IPv4', detail: 'Src: 192.168.1.10', color: 'bg-cyan-600 border-cyan-500', fields: { 'Src': '192.168.1.10', 'Dst': '192.168.1.20' } },
+          { id: 'data1', type: 'DATA', label: 'Payload', detail: 'Data', color: 'bg-emerald-600 border-emerald-500', fields: { 'Content': '...' } },
+        ]
+      },
+      {
+        id: 'step-2',
+        device: 'PE Ingress',
+        deviceType: 'router',
+        action: 'Encap (EoMPLS)',
+        operation: 'PUSH',
+        description: 'PE maps the incoming Port+VLAN to a Virtual Circuit (VC). Pushes VC Label + Transport Label.',
+        concept: 'Label Stack: Outer Label transports to Egress PE. Inner Label (VC) identifies the specific customer circuit.',
+        headers: [
+          { id: 'eth2', type: 'ETH', label: 'Ethernet', detail: 'Core Link', color: 'bg-slate-600 border-slate-500', fields: { 'EtherType': '0x8847 (MPLS)' } },
+          { id: 'mpls_out', type: 'MPLS', label: 'Transport Label', detail: 'L: 500 (Top)', color: 'bg-amber-600 border-amber-500', fields: { 'Label': 500, 'Exp': 0, 'S': 0 } },
+          { id: 'mpls_in', type: 'MPLS', label: 'VC Label', detail: 'L: 999 (Bottom)', color: 'bg-orange-600 border-orange-500', fields: { 'Label': 999, 'Exp': 0, 'S': 1 } },
+          { id: 'eth1', type: 'ETH', label: 'Ethernet', detail: 'Original', color: 'bg-slate-700 border-slate-600 opacity-80', fields: { 'Note': 'Original Header Preserved' } },
+          { id: 'vlan1', type: 'VLAN', label: 'VLAN 10', detail: 'ID: 10', color: 'bg-pink-600 border-pink-500 opacity-80', fields: { 'ID': 10 } },
+        ]
+      },
+      {
+        id: 'step-3',
+        device: 'P Router',
+        deviceType: 'router',
+        action: 'Swap Label',
+        operation: 'SWAP',
+        description: 'Core router swaps the Transport label. The VC label and customer payload remain hidden.',
+        headers: [
+          { id: 'eth3', type: 'ETH', label: 'Ethernet', detail: 'Core Link', color: 'bg-slate-600 border-slate-500', fields: { 'EtherType': '0x8847' } },
+          { id: 'mpls_out', type: 'MPLS', label: 'Transport Label', detail: 'L: 501 (Swap)', color: 'bg-amber-600 border-amber-500', fields: { 'Label': 501 } },
+          { id: 'mpls_in', type: 'MPLS', label: 'VC Label', detail: 'L: 999', color: 'bg-orange-600 border-orange-500', fields: { 'Label': 999, 'S': 1 } },
+          { id: 'eth1', type: 'ETH', label: 'Ethernet', detail: 'Original', color: 'bg-slate-700 border-slate-600 opacity-80', fields: { } },
+          { id: 'vlan1', type: 'VLAN', label: 'VLAN 10', detail: 'ID: 10', color: 'bg-pink-600 border-pink-500 opacity-80', fields: { } },
+        ]
+      },
+      {
+        id: 'step-4',
+        device: 'PE Egress',
+        deviceType: 'router',
+        action: 'Decap & Fwd',
+        operation: 'POP',
+        description: 'PE pops Transport label. Uses VC Label (999) to identify the outgoing Attachment Circuit (AC). Pops VC and sends original frame.',
+        headers: [
+          { id: 'eth4', type: 'ETH', label: 'Ethernet', detail: 'Dst: Cust-B', color: 'bg-slate-600 border-slate-500', fields: { 'Src MAC': 'PE-Egress-MAC', 'Dst MAC': 'Cust-B-MAC' } },
+          { id: 'vlan1', type: 'VLAN', label: 'VLAN 10', detail: 'ID: 10', color: 'bg-pink-600 border-pink-500', fields: { 'ID': 10 } },
+          { id: 'ip1', type: 'IP', label: 'IPv4', detail: 'Src: 192.168.1.10', color: 'bg-cyan-600 border-cyan-500', fields: { 'Src': '192.168.1.10', 'Dst': '192.168.1.20' } },
+          { id: 'data1', type: 'DATA', label: 'Payload', detail: 'Data', color: 'bg-emerald-600 border-emerald-500', fields: { 'Content': '...' } },
+        ]
+      }
+    ]
+  },
+  {
     id: 'ipsec-tunnel',
     title: 'IPSec VPN (Tunnel Mode)',
     description: 'Visualizing packet encryption, ESP encapsulation, and outer header creation.',

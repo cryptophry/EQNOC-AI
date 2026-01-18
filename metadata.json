@@ -1,5 +1,5 @@
 {
-  "name": "EQNOC AI v1.0",
+  "name": "NOC Assistant",
   "description": "Interactive AI-powered network triage assistant for EQNOC L2/L3 services, featuring a futuristic Jarvis-like interface and Gemini Live integration.",
   "requestFramePermissions": [
     "microphone"

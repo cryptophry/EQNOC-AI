@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Session } from '../types';
+import { Session, ActivityItem } from '../types';
 import { generateShiftHandover, generateIncidentSummary, detectSessionIncidents } from '../services/gemini';
-import { ClipboardList, Clock, CheckCircle2, AlertTriangle, Loader2, Copy, Check, MessageSquare, Activity, RotateCcw, ChevronRight, Hash, Terminal, FileSearch, Sparkles } from 'lucide-react';
-
-interface ActivityItem {
-    uniqueId: string;
-    sessionId: string;
-    sessionTitle: string;
-    text: string;
-    timestamp: Date;
-    status: 'OPEN' | 'RESOLVED' | 'MONITORING';
-    isAiGrouped?: boolean;
-    isLoading?: boolean;
-}
+import { ClipboardList, Clock, CheckCircle2, AlertTriangle, Loader2, Copy, Check, FileSearch, Sparkles, FlaskConical, RotateCcw, Activity } from 'lucide-react';
 
 interface Props {
   sessions: Session[];
@@ -21,26 +10,50 @@ interface Props {
       reportTitle: string;
       activeCardId: string | null;
       smartCache: Record<string, { timestamp: number, items: ActivityItem[] }>;
+      deletedIds?: string[];
   };
   onStateChange?: (state: any) => void;
+  shiftStartTime: number;
+  onShiftReset: () => void;
+  onSimulateShift?: () => void;
 }
 
-const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onStateChange }) => {
+const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onStateChange, shiftStartTime, onShiftReset, onSimulateShift }) => {
   const [report, setReport] = useState<string>(persistedState?.report || '');
   const [reportTitle, setReportTitle] = useState<string>(persistedState?.reportTitle || 'GENERATED REPORT');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeCardId, setActiveCardId] = useState<string | null>(persistedState?.activeCardId || null);
   const [smartCache, setSmartCache] = useState<Record<string, { timestamp: number, items: ActivityItem[] }>>(persistedState?.smartCache || {});
-  
-  // Persist shift start time instead of time range
-  const [shiftStartTime, setShiftStartTime] = useState<number>(() => {
-    const saved = localStorage.getItem('eqnoc_shift_start');
-    // Default to 8 hours ago if no active shift tracked
-    return saved ? parseInt(saved, 10) : Date.now() - (8 * 60 * 60 * 1000);
-  });
+  const [deletedIds, setDeletedIds] = useState<string[]>(persistedState?.deletedIds || []);
 
   const [copied, setCopied] = useState(false);
   const [filteredSessions, setFilteredSessions] = useState<Session[]>([]);
+
+  // Synchronize local state with props when they change externally (e.g. from AI tools)
+  useEffect(() => {
+    if (persistedState) {
+        if (persistedState.report !== report) setReport(persistedState.report);
+        if (persistedState.reportTitle !== reportTitle) setReportTitle(persistedState.reportTitle);
+        if (persistedState.activeCardId !== activeCardId) setActiveCardId(persistedState.activeCardId);
+        
+        // Fix for infinite loop on reset:
+        if (persistedState.deletedIds !== deletedIds) {
+            const propEmpty = !persistedState.deletedIds || persistedState.deletedIds.length === 0;
+            const localEmpty = deletedIds.length === 0;
+            if (!propEmpty || !localEmpty) {
+                setDeletedIds(persistedState.deletedIds || []);
+            }
+        }
+
+        if (persistedState.smartCache !== smartCache) {
+            const propEmpty = !persistedState.smartCache || Object.keys(persistedState.smartCache).length === 0;
+            const localEmpty = Object.keys(smartCache).length === 0;
+            if (!propEmpty || !localEmpty) {
+                setSmartCache(persistedState.smartCache || {});
+            }
+        }
+    }
+  }, [persistedState]);
 
   // Sync state changes back to parent
   useEffect(() => {
@@ -48,9 +61,10 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
           report,
           reportTitle,
           activeCardId,
-          smartCache
+          smartCache,
+          deletedIds
       });
-  }, [report, reportTitle, activeCardId, smartCache]);
+  }, [report, reportTitle, activeCardId, smartCache, deletedIds]);
 
   // Filter sessions based on shift start time
   useEffect(() => {
@@ -58,7 +72,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
     setFilteredSessions(recent.sort((a, b) => b.timestamp - a.timestamp));
   }, [sessions, shiftStartTime]);
 
-  // AI Analysis Effect
+  // AI Analysis Effect (Incident Detection)
   useEffect(() => {
     const analyzeSessions = async () => {
         // Find sessions that need analysis (either new or updated)
@@ -73,15 +87,24 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
         for (const session of sessionsToAnalyze) {
              const incidents = await detectSessionIncidents(session);
              
-             const newItems: ActivityItem[] = incidents.map((inc, idx) => ({
-                 uniqueId: `${session.id}-smart-${idx}`,
-                 sessionId: session.id,
-                 sessionTitle: session.title,
-                 text: inc.title,
-                 timestamp: new Date(inc.timestamp),
-                 status: inc.status || 'OPEN',
-                 isAiGrouped: true
-             }));
+             const newItems: ActivityItem[] = incidents.map((inc, idx) => {
+                 // Validate status string to match union type
+                 let status: ActivityItem['status'] = 'OPEN';
+                 const validStatuses: ActivityItem['status'][] = ['OPEN', 'RESOLVED', 'MONITORING'];
+                 if (validStatuses.includes(inc.status as ActivityItem['status'])) {
+                     status = inc.status as ActivityItem['status'];
+                 }
+
+                 return {
+                     uniqueId: `${session.id}-smart-${idx}`,
+                     sessionId: session.id,
+                     sessionTitle: session.title,
+                     text: inc.title,
+                     timestamp: new Date(inc.timestamp),
+                     status: status,
+                     isAiGrouped: true
+                 };
+             });
 
              setSmartCache(prev => ({
                  ...prev,
@@ -99,12 +122,12 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
   }, [filteredSessions]); // smartCache excluded to prevent loops
 
   const handleResetShift = () => {
-      const now = Date.now();
-      setShiftStartTime(now);
-      localStorage.setItem('eqnoc_shift_start', now.toString());
       setReport(''); // Clear previous report
       setReportTitle('GENERATED REPORT');
       setActiveCardId(null);
+      setDeletedIds([]);
+      setSmartCache({}); // Explicitly clear local state to match pending parent state
+      onShiftReset();
   };
 
   const handleGenerateReport = async () => {
@@ -145,6 +168,9 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
 
   // Calculate shift duration for display
   const getShiftDuration = () => {
+      // If start time is 0, it means no shift is active
+      if (shiftStartTime === 0) return 'START SHIFT';
+
       // If duration is negative (e.g. system time drift or fresh init), show 0
       const diff = Math.max(0, Date.now() - shiftStartTime);
       const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -168,7 +194,12 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
       const cache = smartCache[session.id];
       // Use smart cache if available and fresh
       if (cache && cache.timestamp === session.timestamp) {
-          return cache.items;
+          // Filter out user-deleted items or those marked explicitly via tool
+          // AND filter out items that occurred before the shift start
+          return cache.items.filter(item => 
+              !deletedIds.includes(item.uniqueId) &&
+              item.timestamp.getTime() >= shiftStartTime
+          );
       }
 
       // Instead of showing raw inputs, show a loading placeholder while AI analyzes
@@ -197,8 +228,19 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
             </label>
             <div className="flex items-center gap-3">
                <div className="text-[10px] font-mono text-slate-500 hidden sm:block">
-                  STARTED: <span className="text-slate-300">{new Date(shiftStartTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  STARTED: <span className="text-slate-300">
+                    {shiftStartTime === 0 ? '--:--' : new Date(shiftStartTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  </span>
                </div>
+               {onSimulateShift && (
+                   <button
+                        onClick={onSimulateShift}
+                        className="p-1.5 rounded-lg border border-slate-800 bg-slate-900/50 text-slate-500 hover:text-cyan-400 hover:border-cyan-500/50 transition-all"
+                        title="Simulate Shift Data (Test Mode)"
+                   >
+                        <FlaskConical size={14} />
+                   </button>
+               )}
                <button 
                   onClick={handleResetShift}
                   className="flex items-center gap-2 bg-slate-950 hover:bg-slate-800 text-teal-400 border border-teal-500/30 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all hover:shadow-[0_0_15px_rgba(45,212,191,0.1)]"
@@ -209,7 +251,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
             </div>
         </div>
 
-        {/* Metrics Row - Sessions Logged Removed, Grid updated to cols-2 */}
+        {/* Metrics Row */}
         <div className="grid grid-cols-2 gap-3 mb-4">
             <div className="bg-slate-950/50 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
                <div className="p-2 bg-amber-500/10 rounded-lg text-amber-400"><AlertTriangle size={18} /></div>
@@ -218,6 +260,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
                   <div className="text-[10px] text-slate-500 uppercase font-mono">Activity Items</div>
                </div>
             </div>
+            
             <div className="bg-slate-950/50 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
                <div className="p-2 bg-slate-800 rounded-lg text-slate-400"><Clock size={18} /></div>
                <div>
