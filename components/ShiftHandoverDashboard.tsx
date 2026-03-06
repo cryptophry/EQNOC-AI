@@ -212,7 +212,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
           status: 'OPEN',
           isAiGrouped: false,
           isLoading: true
-      }];
+      } as ActivityItem];
   }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   // Count only loaded items for the metric

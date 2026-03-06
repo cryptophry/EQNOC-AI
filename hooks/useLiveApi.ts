@@ -23,8 +23,8 @@ export function useLiveApi({ onTranscription }: UseLiveApiProps) {
 
   useEffect(() => {
     // Initialize GenAI client
-    if (process.env.API_KEY) {
-      aiRef.current = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    if (process.env.GEMINI_API_KEY) {
+      aiRef.current = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     }
     
     return () => {

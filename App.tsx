@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createChatSession, OutageRecord, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow, fetchErgonOutages } from './services/gemini';
+import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow } from './services/gemini';
 import { Message, MessageRole, TriageMode, TriageStatus, FlowNode, Session, ActivityItem } from './types';
-import { Mic, Send, Bot, User, Power, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, ZapOff, FileText, Loader2, ScanSearch, Clock, Paperclip, Image as ImageIcon, X, ClipboardList, Layers, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown } from 'lucide-react';
+import { Mic, Send, Bot, User, Power, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, FileText, Loader2, ScanSearch, Clock, Paperclip, Image as ImageIcon, X, ClipboardList, Layers, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import CommandPanel from './components/CommandPanel';
 import MessageContent from './components/MessageContent';
 import NetworkTools from './components/NetworkTools';
 import DiagnosticGrid from './components/DiagnosticGrid';
 import FaultAssistant from './components/FaultAssistant';
-import OutageTracker from './components/OutageTracker';
 import LogAnalyzer from './components/LogAnalyzer';
 import ShiftHandoverDashboard from './components/ShiftHandoverDashboard';
 import ReminderModal, { Reminder } from './components/ReminderModal';
@@ -22,18 +21,42 @@ const App: React.FC = () => {
 
   const [mode, setMode] = useState<TriageMode>('TEXT');
   const [triageStatus, setTriageStatus] = useState<TriageStatus>('pending');
-  const [leftPanelMode, setLeftPanelMode] = useState<'DASHBOARD' | 'FAULT_ASSIST' | 'OUTAGES' | 'LOGS' | 'HANDOVER'>('DASHBOARD');
+  const [leftPanelMode, setLeftPanelMode] = useState<'DASHBOARD' | 'FAULT_ASSIST' | 'LOGS' | 'HANDOVER'>('DASHBOARD');
   
   // Resizable Panel State
-  const [leftPanelWidth, setLeftPanelWidth] = useState(55); // Percentage
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
+    try { const saved = localStorage.getItem('eqnoc_leftPanelWidth'); return saved ? parseFloat(saved) : 55; } catch { return 55; }
+  }); // Percentage
   
   // Dashboard Internal Resizing State
-  const [dashboardSplitV, setDashboardSplitV] = useState(30); // % Height of Top Grid
-  const [dashboardSplitH, setDashboardSplitH] = useState(60); // % Width of Left Tool
+  const [dashboardSplitV, setDashboardSplitV] = useState(() => {
+    try { const saved = localStorage.getItem('eqnoc_dashboardSplitV'); return saved ? parseFloat(saved) : 30; } catch { return 30; }
+  }); // % Height of Top Grid
+  const [dashboardSplitH, setDashboardSplitH] = useState(() => {
+    try { const saved = localStorage.getItem('eqnoc_dashboardSplitH'); return saved ? parseFloat(saved) : 60; } catch { return 60; }
+  }); // % Width of Left Tool
   const [activeResizer, setActiveResizer] = useState<'MAIN' | 'DASH_V' | 'DASH_H' | null>(null);
   
   // Dashboard Section Visibility
-  const [isDiagnosticMinimized, setIsDiagnosticMinimized] = useState(false);
+  const [isDiagnosticMinimized, setIsDiagnosticMinimized] = useState(() => {
+    try { return localStorage.getItem('eqnoc_isDiagnosticMinimized') === 'true'; } catch { return false; }
+  });
+  const [isCommandPanelMinimized, setIsCommandPanelMinimized] = useState(() => {
+    try { return localStorage.getItem('eqnoc_isCommandPanelMinimized') === 'true'; } catch { return false; }
+  });
+
+  // Persist layout state
+  useEffect(() => {
+    try {
+      localStorage.setItem('eqnoc_leftPanelWidth', leftPanelWidth.toString());
+      localStorage.setItem('eqnoc_dashboardSplitV', dashboardSplitV.toString());
+      localStorage.setItem('eqnoc_dashboardSplitH', dashboardSplitH.toString());
+      localStorage.setItem('eqnoc_isDiagnosticMinimized', isDiagnosticMinimized.toString());
+      localStorage.setItem('eqnoc_isCommandPanelMinimized', isCommandPanelMinimized.toString());
+    } catch (e) {
+      console.error('Failed to save layout state', e);
+    }
+  }, [leftPanelWidth, dashboardSplitV, dashboardSplitH, isDiagnosticMinimized, isCommandPanelMinimized]);
 
   // State for active diagnostic module (filtering commands)
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
@@ -60,15 +83,6 @@ const App: React.FC = () => {
     tree: null
   });
   const [isFaultAnalysisLoading, setIsFaultAnalysisLoading] = useState(false); // Track loading state for FaultAssistant
-
-  // Outage State (Lifted from Component)
-  const [outageState, setOutageState] = useState<{outages: OutageRecord[], lastUpdated: Date | null, isSimulated: boolean}>({
-    outages: [],
-    lastUpdated: null,
-    isSimulated: false
-  });
-  const [isOutageLoading, setIsOutageLoading] = useState(false);
-  const [outageError, setOutageError] = useState<string | null>(null);
 
   const [shiftState, setShiftState] = useState<{
     report: string;
@@ -261,41 +275,6 @@ const App: React.FC = () => {
   const chatSession = useRef<any>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Outage Fetching Logic (Updated to use AI Model Collection)
-  const fetchOutages = useCallback(async () => {
-    setIsOutageLoading(true);
-    setOutageError(null);
-    
-    // Use the robust fetcher that tries Proxy -> Search -> Simulation
-    const { records, source } = await fetchErgonOutages();
-    
-    let finalRecords = records;
-    let isSimulated = source === 'SIMULATION';
-
-    // If simulation was forced due to fetch failure, populate with static mock data if empty
-    if (isSimulated && finalRecords.length === 0) {
-        finalRecords = [
-             { suburb: 'ROCKHAMPTON', location: 'Yaamba Rd, Norman Gdns', customersAffected: '1,240', status: 'IN PROGRESS', estFix: '14:30 Today', description: 'Emergency repairs to high voltage network.', type: 'Unplanned', council: 'Rockhampton' },
-            { suburb: 'TOWNSVILLE', location: 'Flinders St, CBD', customersAffected: '45', status: 'AWAITING CREW', estFix: '16:00 Today', description: 'Vegetation interference on overhead lines.', type: 'Unplanned', council: 'Townsville' },
-            { suburb: 'CAIRNS NORTH', location: 'Sheridan St', customersAffected: '312', status: 'INVESTIGATING', estFix: 'Unknown', description: 'Reports of loud bang/flash. Crew dispatched.', type: 'Unplanned', council: 'Cairns' },
-            { suburb: 'MACKAY', location: 'Nebo Rd', customersAffected: '12', status: 'RESOLVED', estFix: 'Restored', description: 'Fuse replacement.', type: 'Planned', council: 'Mackay' },
-            { suburb: 'TOOWOOMBA', location: 'Ruthven St', customersAffected: '88', status: 'IN PROGRESS', estFix: '15:15 Today', description: 'Vehicle impact to pole.', type: 'Unplanned', council: 'Toowoomba' }
-        ];
-    }
-
-    const now = new Date();
-    setOutageState({ outages: finalRecords, lastUpdated: now, isSimulated });
-    setIsOutageLoading(false);
-  }, []);
-
-  // Initial Fetch on Mount
-  useEffect(() => {
-      // Only fetch if we don't have data yet
-      if (!outageState.lastUpdated) {
-          fetchOutages();
-      }
-  }, [fetchOutages, outageState.lastUpdated]);
-
   // Load sessions from localStorage on mount
   useEffect(() => {
     try {
@@ -390,13 +369,14 @@ const App: React.FC = () => {
         if (newH > 10 && newH < 90) setDashboardSplitV(newH);
     } else if (activeResizer === 'DASH_H') {
         // Horizontal split for tools
+        if (isCommandPanelMinimized) return; // Disable resize when minimized
         const panelPx = (leftPanelWidth / 100) * window.innerWidth;
         const availableW = panelPx - 48; // p-6 is 24px each side
         const relativeX = e.clientX - 24;
         const newW = (relativeX / availableW) * 100;
         if (newW > 15 && newW < 85) setDashboardSplitH(newW);
     }
-  }, [activeResizer, leftPanelWidth, isDiagnosticMinimized]);
+  }, [activeResizer, leftPanelWidth, isDiagnosticMinimized, isCommandPanelMinimized]);
 
   const stopResizing = useCallback(() => {
     setActiveResizer(null);
@@ -512,21 +492,11 @@ const App: React.FC = () => {
         ).join('\n');
     }
 
-    let outageDetails = "No active outages detected.";
-    if (outageState.outages.length > 0) {
-        outageDetails = outageState.outages.map(o => 
-            `- [${o.suburb}] Location: ${o.location} | Affected: ${o.customersAffected} | Status: ${o.status} | Fix: ${o.estFix} | Cause: ${o.description}`
-        ).join('\n');
-    }
-
     return `
 [SYSTEM STATE START]
 - **Current View:** ${leftPanelMode}
 - **Active Diagnostic Module:** ${activeModuleId || 'None'}
 - **Shift Duration:** ${shiftHours} hours
-- **Active Outages (Utility Feed):** ${outageState.outages.length}
-**OUTAGE DETAILS (LIVE FEED):**
-${outageDetails}
 **SHIFT INCIDENTS (Active):**
 ${incidentContext}
 - **Log Analyzer:** ${persistentLogs.length > 0 ? `${persistentLogs.length} chars loaded` : 'Empty'}
@@ -564,6 +534,10 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
     });
 
     try {
+      if (!chatSession.current) {
+          chatSession.current = createChatSession();
+      }
+      
       let relevantHistory = '';
       if (!currentAttachment) {
           setIsRetrieving(true);
@@ -617,12 +591,9 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         }
 
         // Accumulate function calls from ANY chunk
-        const parts = c.candidates?.[0]?.content?.parts;
-        if (parts) {
-            parts.forEach(part => {
-                if (part.functionCall) {
-                    functionCalls.push(part.functionCall);
-                }
+        if (c.functionCalls) {
+            c.functionCalls.forEach(fc => {
+                functionCalls.push(fc);
             });
         }
 
@@ -771,13 +742,14 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                     toolResult = `Notes updated successfully. Current size: ${newNotes.length} chars.`;
                 }
 
-                toolResponses.push({
-                    functionResponse: {
-                        name: fc.name,
-                        response: { result: toolResult },
-                        id: fc.id || 'tool-id'
-                    }
-                });
+                const functionResponse: any = {
+                    name: fc.name,
+                    response: { result: toolResult }
+                };
+                if (fc.id) {
+                    functionResponse.id = fc.id;
+                }
+                toolResponses.push({ functionResponse });
             }
 
             // Send tool responses to close turn sequence
@@ -795,12 +767,12 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       saveCurrentSession(completedMessages);
       generateSessionEmbedding(completedMessages);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gemini API Error:", error);
       setMessages(prev => [{
         id: Date.now().toString(),
         role: MessageRole.SYSTEM,
-        text: "Communication protocol error. Check network and API configuration.",
+        text: `Communication protocol error. Check network and API configuration. Details: ${error?.message || String(error)}`,
         timestamp: new Date()
       }, ...prev]);
       setIsRetrieving(false);
@@ -838,13 +810,13 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       await disconnect();
       setMode('TEXT');
     } else {
-      if (!process.env.API_KEY) { alert("API KEY MISSING"); return; }
+      if (!process.env.GEMINI_API_KEY) { alert("API KEY MISSING"); return; }
       await connect();
       setMode('LIVE');
     }
   };
 
-  const isSystemOnline = !!process.env.API_KEY;
+  const isSystemOnline = !!process.env.GEMINI_API_KEY;
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
@@ -1017,7 +989,6 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         <div className="flex border-b border-slate-800 bg-slate-950/40 shrink-0 overflow-x-auto scrollbar-hide">
             <button onClick={() => setLeftPanelMode('DASHBOARD')} className={`flex-1 py-4 px-2 min-w-fit text-xs font-bold tracking-widest border-b-2 transition-all flex items-center justify-center gap-2 ${leftPanelMode === 'DASHBOARD' ? 'border-cyan-400 text-cyan-400 bg-cyan-950/10' : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}><LayoutDashboard size={16} /> OPS</button>
             <button onClick={() => setLeftPanelMode('FAULT_ASSIST')} className={`flex-1 py-4 px-2 min-w-fit text-xs font-bold tracking-widest border-b-2 transition-all flex items-center justify-center gap-2 ${leftPanelMode === 'FAULT_ASSIST' ? 'border-amber-400 text-amber-400 bg-amber-950/10' : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}><GitBranch size={16} /> TRIAGE</button>
-            <button onClick={() => setLeftPanelMode('OUTAGES')} className={`flex-1 py-4 px-2 min-w-fit text-xs font-bold tracking-widest border-b-2 transition-all flex items-center justify-center gap-2 ${leftPanelMode === 'OUTAGES' ? 'border-red-500 text-red-500 bg-red-950/10' : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}><ZapOff size={16} /> OUTAGES</button>
             <button onClick={() => setLeftPanelMode('HANDOVER')} className={`flex-1 py-4 px-2 min-w-fit text-xs font-bold tracking-widest border-b-2 transition-all flex items-center justify-center gap-2 ${leftPanelMode === 'HANDOVER' ? 'border-teal-400 text-teal-400 bg-teal-950/10' : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}><ClipboardList size={16} /> SHIFT</button>
             <button onClick={() => setLeftPanelMode('LOGS')} className={`flex-1 py-4 px-2 min-w-fit text-xs font-bold tracking-widest border-b-2 transition-all flex items-center justify-center gap-2 ${leftPanelMode === 'LOGS' ? 'border-blue-400 text-blue-400 bg-blue-950/10' : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}><ScanSearch size={16} /> X-RAY</button>
         </div>
@@ -1064,19 +1035,39 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
 
                 {/* Bottom Section */}
                 <div className="flex-1 flex min-h-0 pt-2">
-                    <div style={{ width: `${dashboardSplitH}%` }} className="h-full overflow-hidden">
+                    <div style={{ width: isCommandPanelMinimized ? '100%' : `${dashboardSplitH}%` }} className="h-full overflow-hidden transition-all duration-300">
                         <NetworkTools activeTab={networkToolTab} onTabChange={setNetworkToolTab} notes={notes} onNotesChange={handleNotesChange} />
                     </div>
                     
-                    {/* Horizontal Resizer */}
+                    {/* Horizontal Resizer with Toggle */}
                     <div 
-                        className="w-4 -mx-2 z-10 flex items-center justify-center cursor-col-resize hover:bg-slate-800/50 transition-colors group shrink-0 h-full"
-                        onMouseDown={() => { setActiveResizer('DASH_H'); document.body.style.cursor = 'col-resize'; }}
+                        className={`relative z-10 flex flex-col items-center justify-center transition-colors shrink-0 group ${isCommandPanelMinimized ? 'w-8 bg-slate-900 border-l border-slate-800/50' : 'w-4 -mx-2 cursor-col-resize hover:bg-slate-800/50'}`}
+                        onMouseDown={(e) => { 
+                            if(isCommandPanelMinimized) return;
+                            setActiveResizer('DASH_H'); 
+                            document.body.style.cursor = 'col-resize'; 
+                        }}
                     >
-                        <div className="h-16 w-1 rounded-full bg-slate-700 group-hover:bg-cyan-500 transition-colors" />
+                        {!isCommandPanelMinimized && (
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="h-16 w-1 rounded-full bg-slate-700 group-hover:bg-cyan-500 transition-colors" />
+                            </div>
+                        )}
+
+                        {/* Toggle Button */}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setIsCommandPanelMinimized(!isCommandPanelMinimized); }}
+                            className="z-20 p-0.5 rounded bg-slate-800 text-slate-400 hover:text-white border border-slate-700 shadow-sm transition-all hover:bg-cyan-900/50 hover:border-cyan-500/50"
+                            title={isCommandPanelMinimized ? "Show Command Library" : "Hide Command Library"}
+                        >
+                            {isCommandPanelMinimized ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+                        </button>
                     </div>
 
-                    <div className="flex-1 h-full overflow-hidden bg-slate-900/40 rounded-xl border border-slate-800/50 shadow-sm min-w-[200px]">
+                    <div 
+                        style={{ width: isCommandPanelMinimized ? '0px' : undefined, opacity: isCommandPanelMinimized ? 0 : 1 }}
+                        className={`transition-all duration-300 ease-in-out ${isCommandPanelMinimized ? 'overflow-hidden border-none min-w-0' : 'flex-1 h-full overflow-hidden bg-slate-900/40 rounded-xl border border-slate-800/50 shadow-sm min-w-[200px]'}`}
+                    >
                         <CommandPanel activeModuleId={activeModuleId} onCategoryChange={setActiveModuleId} onExplainCommand={handleExplainCommand} onSimulateCommand={handleSimulateCommand} isProcessing={isLoading} />
                     </div>
                 </div>
@@ -1100,7 +1091,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                         onAnalysisChange={setLogAnalysisResult}
                     />
                 </div>
-            ) : leftPanelMode === 'HANDOVER' ? (
+            ) : (
                 <div className="h-full w-full bg-slate-900/40 rounded-xl border border-slate-800/50 overflow-hidden shadow-sm">
                     <ShiftHandoverDashboard 
                         sessions={sessions} 
@@ -1111,17 +1102,6 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                         onSimulateShift={handleSimulateShift}
                     />
                 </div>
-            ) : (
-            <div className="h-full w-full bg-slate-900/40 rounded-xl border border-slate-800/50 overflow-hidden shadow-sm">
-                <OutageTracker 
-                outages={outageState.outages}
-                lastUpdated={outageState.lastUpdated}
-                isLoading={isOutageLoading}
-                error={outageError}
-                isSimulated={outageState.isSimulated}
-                onRefresh={fetchOutages}
-                />
-            </div>
             )}
         </div>
         </div>
