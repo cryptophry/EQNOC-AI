@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Camera, Upload, Trash2, Loader2, ImageIcon, CheckCircle2 } from 'lucide-react';
+import { X, Upload, Trash2, Loader2, ImageIcon, CheckCircle2 } from 'lucide-react';
 import { listPhotos, deletePhoto, ingestPhoto, PhotoRecord } from '../services/photos';
 
 interface Props {
@@ -54,8 +54,8 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
     <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
       <div className="w-full max-w-2xl max-h-[82vh] bg-card border border-line rounded-xl2 shadow-raised flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 sm:p-5 border-b border-line flex items-center gap-3">
-          <Camera size={18} className="text-accent" />
-          <h2 className="text-[16px] font-bold">Site photos</h2>
+          <ImageIcon size={18} className="text-accent" />
+          <h2 className="text-[16px] font-bold">Reference images</h2>
           <span className="text-[12px] text-muted">{photos.length}</span>
           <button onClick={onClose} className="ml-auto text-muted hover:text-ink" aria-label="Close"><X size={20} /></button>
         </div>
@@ -66,7 +66,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             disabled={!!busy}
-            placeholder="What is this? e.g. Rectifier nameplate — Site B (optional)"
+            placeholder="What is this? e.g. Alarm circuit wiring, or rectifier nameplate (optional)"
             className="w-full mb-2.5 px-3 py-2.5 rounded-xl bg-card-2 border border-line text-[14px] placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-60"
           />
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
@@ -77,7 +77,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            {busy ? 'Reading photo…' : 'Upload photo(s)'}
+            {busy ? 'Reading image…' : 'Upload image(s)'}
           </button>
           {busy && (
             <div className="mt-3">
@@ -90,7 +90,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
               </div>
             </div>
           )}
-          <p className="text-[11.5px] text-faint mt-2">Snap a nameplate, fault display or label. The photo is read for text and equipment details, then it's searchable — ask about it any time later.</p>
+          <p className="text-[11.5px] text-faint mt-2">Add a photo, wiring diagram, sketch or nameplate. It's read for text and detail, then remembered — ask about it in any chat later.</p>
         </div>
 
         {error && <div className="px-4 py-2 text-[13px] text-danger">{error}</div>}
@@ -101,7 +101,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             <div className="flex justify-center py-10 text-faint"><Loader2 size={22} className="animate-spin" /></div>
           ) : photos.length === 0 ? (
             <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
-              <ImageIcon size={30} /><p className="text-[13px]">No photos yet — upload one to make it searchable.</p>
+              <ImageIcon size={30} /><p className="text-[13px]">No reference images yet — upload one to make it searchable.</p>
             </div>
           ) : photos.map((p) => (
             <div key={p.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-start gap-3">

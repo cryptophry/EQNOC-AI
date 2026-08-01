@@ -1,4 +1,5 @@
-// Vercel serverless function: manage field "site photos" for RAG.
+// Vercel serverless function: manage "reference images" for RAG.
+// (photos, wiring/circuit diagrams, sketches — any image a tech wants remembered)
 //   GET    /api/photos              -> list photos (from the __photos__ manifest)
 //   POST   /api/photos {action:...} -> ingest (a single photo)
 //   DELETE /api/photos {photoId}    -> remove a photo's vectors + manifest entry
@@ -41,7 +42,7 @@ async function describeImage(dataUrl, note) {
   const payload = JSON.stringify({
     model: VISION_MODEL,
     messages: [{ role: 'user', content: [
-      { type: 'text', text: 'This is a field photo taken by a telecom technician. Do two things in plain text:\n1) TRANSCRIPTION: transcribe ALL visible text exactly — nameplate/rating-plate data, model and part numbers, serial numbers, meter/display readings, labels, warnings, connector/port markings.\n2) DESCRIPTION: briefly and factually describe what the photo shows — equipment type, make/model if identifiable, visible condition, indicators/LED states, and anything a technician would need to reference later.\nDo not speculate beyond what is visible. Output only the transcription and description.' + hint },
+      { type: 'text', text: 'This is a reference image saved by a telecom technician — it may be a photo (e.g. a nameplate, fault display or label), a wiring/circuit diagram, or a hand sketch. Do two things in plain text:\n1) TRANSCRIPTION: transcribe ALL visible text exactly — nameplate/rating-plate data, model and part numbers, serial numbers, meter/display readings, labels, warnings, connector/port/pin markings, and any callouts or annotations on a diagram.\n2) DESCRIPTION: briefly and factually describe what the image shows. For a photo: equipment type, make/model if identifiable, visible condition, indicator/LED states. For a diagram or sketch: what it depicts (e.g. alarm circuit wiring), and each labelled component and how things connect (from/to, terminal/pin numbers, wire colours).\nDo not speculate beyond what is visible. Output only the transcription and description.' + hint },
       { type: 'image_url', image_url: { url: dataUrl } },
     ] }],
   });
@@ -111,14 +112,14 @@ export default async function handler(req, res) {
         try { visionText = (await describeImage(image, note)).trim(); }
         catch (e) { res.status(502).json({ error: `Vision read failed: ${e.message}` }); return; }
 
-        const label = (title || note || 'Site photo').trim();
+        const label = (title || note || 'Reference image').trim();
         const body_ = [note ? `Note: ${note}` : '', visionText].filter(Boolean).join('\n\n');
         const full = `${label}\n\n${body_}`.trim();
         const chunks = chunkText(full);
         const records = chunks.map((c, i) => ({
           id: `${photoId}#${i}`,
           data: c,
-          metadata: { manualId: photoId, title: label, kind: 'photo' },
+          metadata: { manualId: photoId, title: label, kind: 'reference' },
         }));
         if (records.length) await upsertChunks(records);
 

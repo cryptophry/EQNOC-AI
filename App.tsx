@@ -6,7 +6,7 @@ import {
 import { Message, MessageRole, Session } from './types';
 import {
   Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
-  FileText, RotateCcw, ChevronRight, Loader2, Camera,
+  FileText, RotateCcw, ChevronRight, Loader2, ImageIcon,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import LoginScreen from './components/LoginScreen';
@@ -448,7 +448,7 @@ const App: React.FC = () => {
               <BookText size={16} className="text-muted" /> <span className="flex-1 text-left">Equipment manuals</span> <ChevronRight size={15} className="text-faint" />
             </button>
             <button onClick={() => setIsPhotosOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <Camera size={16} className="text-muted" /> <span className="flex-1 text-left">Site photos</span> <ChevronRight size={15} className="text-faint" />
+              <ImageIcon size={16} className="text-muted" /> <span className="flex-1 text-left">Reference images</span> <ChevronRight size={15} className="text-faint" />
             </button>
             <button onClick={() => setIsNotesOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
               <StickyNote size={16} className="text-muted" /> <span className="flex-1 text-left">Scratchpad notes</span>

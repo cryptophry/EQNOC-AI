@@ -1,4 +1,4 @@
-// Client-side "site photos" ingestion + management. The browser downscales the
+// Client-side "reference images" ingestion + management. The browser downscales the
 // image to keep the payload small, then sends it to /api/photos, which runs the
 // vision model (transcribe + describe) and embeds the result into Upstash so the
 // assistant can answer questions about the photo later.
