@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import aiHandler from './api/ai.js';
 import loginHandler from './api/login.js';
+import manualsHandler from './api/manuals.js';
 
 // Load .env.local into process.env (no dotenv dependency needed)
 if (existsSync('.env.local')) {
@@ -20,6 +21,7 @@ const PORT = process.env.API_PORT || 8787;
 const routes = {
   '/api/ai': aiHandler,
   '/api/login': loginHandler,
+  '/api/manuals': manualsHandler,
 };
 
 createServer(async (req, res) => {

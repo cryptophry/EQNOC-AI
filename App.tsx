@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   createChatSession, generateShiftHandover, checkAiHealth, StreamChunk,
   isAuthenticated as hasAuthToken, clearAuth, AuthError,
 } from './services/ai';
 import { Message, MessageRole, Session } from './types';
 import {
-  Activity, Send, Paperclip, X, Bell, BookOpen, StickyNote,
+  Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
   FileText, RotateCcw, ChevronRight, Loader2,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
+// Lazy — pulls in pdf.js only when a tech opens the manuals uploader.
+const ManualsModal = lazy(() => import('./components/ManualsModal'));
 import ReminderModal, { Reminder } from './components/ReminderModal';
 import { playAlertSound } from './utils/audio';
 
@@ -49,6 +51,7 @@ const App: React.FC = () => {
 
   // Command library
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isManualsOpen, setIsManualsOpen] = useState(false);
 
   // Reminders / alarms
   const [reminders, setReminders] = useState<Reminder[]>(() => {
@@ -439,6 +442,9 @@ const App: React.FC = () => {
             <button onClick={() => setIsLibraryOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
               <BookOpen size={16} className="text-muted" /> <span className="flex-1 text-left">Command library</span> <ChevronRight size={15} className="text-faint" />
             </button>
+            <button onClick={() => setIsManualsOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
+              <BookText size={16} className="text-muted" /> <span className="flex-1 text-left">Equipment manuals</span> <ChevronRight size={15} className="text-faint" />
+            </button>
             <button onClick={() => setIsNotesOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
               <StickyNote size={16} className="text-muted" /> <span className="flex-1 text-left">Scratchpad notes</span>
               {notes && <span className="text-[11px] text-faint">{notes.length}</span>} <ChevronRight size={15} className="text-faint" />
@@ -449,6 +455,7 @@ const App: React.FC = () => {
 
       {/* Modals */}
       {isLibraryOpen && <CommandLibraryModal onClose={() => setIsLibraryOpen(false)} onExplainCommand={handleExplainCommand} onSimulateCommand={handleSimulateCommand} />}
+      {isManualsOpen && <Suspense fallback={null}><ManualsModal onClose={() => setIsManualsOpen(false)} /></Suspense>}
       {isReminderOpen && <ReminderModal reminders={reminders} onClose={() => setIsReminderOpen(false)} onAdd={(r) => setReminders(prev => [...prev, r].sort((a, b) => a.time - b.time))} onDelete={handleDismissAlarm} />}
 
       {/* Notes drawer */}

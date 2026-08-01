@@ -23,6 +23,42 @@
 
 import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
+import { vectorConfigured, queryChunks } from '../lib/vectorStore.js';
+
+const RETRIEVE_TOP_K = 6;
+const RETRIEVE_MIN_SCORE = 0.35; // ignore weak matches so general chat isn't polluted
+
+// Pull the latest user question text out of the messages (handles multimodal content).
+function lastUserText(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    if (typeof m.content === 'string') return m.content;
+    if (Array.isArray(m.content)) {
+      return m.content.filter((p) => p?.type === 'text').map((p) => p.text).join(' ');
+    }
+  }
+  return '';
+}
+
+// Query the manual store and format grounded excerpts to inject into the prompt.
+async function retrieveManualContext(messages) {
+  const query = lastUserText(messages).trim();
+  if (!query) return null;
+  let hits;
+  try {
+    hits = await queryChunks(query, RETRIEVE_TOP_K);
+  } catch (e) {
+    console.warn('manual retrieval failed', e.message);
+    return null;
+  }
+  const good = (hits || []).filter((h) => (h.score ?? 0) >= RETRIEVE_MIN_SCORE && h.data);
+  if (good.length === 0) return null;
+  const excerpts = good
+    .map((h, i) => `[${i + 1}] (${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'})\n${h.data}`)
+    .join('\n\n');
+  return `RELEVANT EQUIPMENT MANUAL EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE them like (Title, p.X)):\n\n${excerpts}`;
+}
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash-0731';
@@ -100,7 +136,13 @@ export default async function handler(req, res) {
   // (chat sessions set useKnowledgeBase; one-shot utility calls don't need it.)
   let messages = body.messages;
   if (body.useKnowledgeBase) {
-    messages = [{ role: 'system', content: EQNOC_KNOWLEDGE_BASE }, ...messages];
+    const systemParts = [EQNOC_KNOWLEDGE_BASE];
+    // Retrieve relevant manual excerpts (RAG) if the manual store is configured.
+    if (vectorConfigured()) {
+      const manualCtx = await retrieveManualContext(body.messages);
+      if (manualCtx) systemParts.push(manualCtx);
+    }
+    messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messages];
   }
 
   // --- Pick the model server-side: upgrade to the vision model only when the
