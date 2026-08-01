@@ -319,7 +319,7 @@ const App: React.FC = () => {
   if (!isAuthenticated) return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
 
   return (
-    <div className="min-h-screen w-full flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <div className="min-h-screen lg:h-[100dvh] w-full flex flex-col lg:overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {/* Alarm banner */}
       {activeAlarms.length > 0 && (
         <div className="bg-danger text-white text-[13px] font-semibold px-4 py-2 flex items-center gap-2" role="alert">
@@ -355,10 +355,10 @@ const App: React.FC = () => {
       </header>
 
       {/* Body */}
-      <div className="flex-1 w-full max-w-[1180px] mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-h-0">
+      <div className="flex-1 w-full max-w-[1500px] mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-h-0">
         {/* Chat */}
         <section className="bg-card border border-line rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
-          <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 scrollbar-hide">
+          <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 scrollbar-hide">
             {messages.map(msg => (
               <div key={msg.id} className={`flex gap-3 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''}`}>
                 <div className={`w-8 h-8 rounded-[9px] shrink-0 grid place-items-center text-[13px] font-semibold ${
