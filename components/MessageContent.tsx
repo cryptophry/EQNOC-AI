@@ -20,21 +20,21 @@ const CodeBlock: React.FC<{ content: string; language?: string }> = ({ content, 
   const cleanContent = content.replace(/^\n/, '');
 
   return (
-    <div className="my-4 rounded-lg overflow-hidden border border-slate-700 bg-slate-950/80 group shadow-lg">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-slate-800">
-        <span className="text-xs font-mono font-bold uppercase text-slate-400 tracking-wide">
+    <div className="my-4 rounded-lg overflow-hidden border border-line bg-code-bg group shadow-lg">
+      <div className="flex items-center justify-between px-4 py-2 bg-card-2 border-b border-line">
+        <span className="text-xs font-mono font-bold uppercase text-muted tracking-wide">
           {language || 'TERMINAL OUTPUT'}
         </span>
         <button
           onClick={handleCopy}
-          className="text-slate-500 hover:text-cyan-400 transition-colors p-1"
+          className="text-faint hover:text-accent transition-colors p-1"
           title="Copy"
         >
           {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
         </button>
       </div>
       <div className="p-4 overflow-x-auto">
-        <pre className="font-mono text-sm text-cyan-100/90 whitespace-pre leading-relaxed">
+        <pre className="font-mono text-sm text-code-ink whitespace-pre leading-relaxed">
           <code>{cleanContent}</code>
         </pre>
       </div>
@@ -76,7 +76,7 @@ const parseInline = (text: string): React.ReactNode[] => {
       if (closing !== -1) {
         const content = text.slice(firstIndex + 1, closing);
         nodes.push(
-          <code key={`c-${firstIndex}`} className="text-[13px] font-mono bg-slate-800/80 text-cyan-300 px-1.5 py-0.5 rounded border border-slate-700/50 mx-0.5">
+          <code key={`c-${firstIndex}`} className="text-[13px] font-mono bg-code-bg text-accent px-1.5 py-0.5 rounded border border-line mx-0.5">
             {content}
           </code>
         );
@@ -96,7 +96,7 @@ const parseInline = (text: string): React.ReactNode[] => {
       if (closing !== -1) {
         const content = text.slice(firstIndex + 2, closing);
         nodes.push(
-          <strong key={`b-${firstIndex}`} className="text-white font-bold tracking-wide">
+          <strong key={`b-${firstIndex}`} className="text-ink font-bold tracking-wide">
             {parseInline(content)}
           </strong>
         );
@@ -116,7 +116,7 @@ const parseInline = (text: string): React.ReactNode[] => {
       const linkMatch = remainder.match(/^\[([^\]]+)\]\(([^)]+)\)/);
       if (linkMatch) {
          nodes.push(
-          <a key={`l-${firstIndex}`} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline inline-flex items-center gap-1 font-medium">
+          <a key={`l-${firstIndex}`} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline inline-flex items-center gap-1 font-medium">
             {linkMatch[1]}<ExternalLink size={12} />
           </a>
          );
@@ -223,27 +223,27 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
   flush();
 
   return (
-    <div className="space-y-4 text-slate-200">
+    <div className="space-y-4 text-ink">
       {blocks.map((b, idx) => {
         if (b.type === 'h') {
-          const size = b.level === 1 ? 'text-2xl font-bold text-cyan-400 border-b border-slate-700 pb-2 mt-6 mb-4' : 
-                       b.level === 2 ? 'text-xl font-bold text-cyan-300 mt-5 mb-3' : 
-                       'text-lg font-bold text-white mt-4 mb-2';
-          return <div key={idx} className={`${size} font-display tracking-wide uppercase`}>{parseInline(b.content || "")}</div>;
+          const size = b.level === 1 ? 'text-2xl font-bold text-accent border-b border-line pb-2 mt-6 mb-4' : 
+                       b.level === 2 ? 'text-xl font-bold text-accent mt-5 mb-3' : 
+                       'text-lg font-bold text-ink mt-4 mb-2';
+          return <div key={idx} className={`${size} tracking-wide uppercase`}>{parseInline(b.content || "")}</div>;
         }
         if (b.type === 'li') {
           return (
             <ul key={idx} className="space-y-2 my-3">
               {b.items?.map((item, i) => (
-                <li key={i} className={`flex gap-3 text-base leading-7 ${item.customLabel ? 'bg-slate-900/40 p-3 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors' : ''}`} style={{ paddingLeft: item.customLabel ? '0.75rem' : `${item.level * 1.5}em` }}>
+                <li key={i} className={`flex gap-3 text-base leading-7 ${item.customLabel ? 'bg-card-2 p-3 rounded-lg border border-line hover:border-line transition-colors' : ''}`} style={{ paddingLeft: item.customLabel ? '0.75rem' : `${item.level * 1.5}em` }}>
                   {item.customLabel ? (
-                     <span className="shrink-0 font-mono font-bold text-xs bg-cyan-950 text-cyan-400 border border-cyan-500/30 rounded px-2 py-1 h-fit shadow-[0_0_10px_rgba(34,211,238,0.1)]">
+                     <span className="shrink-0 font-mono font-bold text-xs bg-card-2 text-accent border border-line rounded px-2 py-1 h-fit ">
                        {item.customLabel}
                      </span>
                   ) : (
-                     <span className={`text-cyan-500 shrink-0 font-bold ${item.isOrdered?'':'mt-2.5 text-[6px]'}`}>{item.isOrdered?item.number:'●'}</span>
+                     <span className={`text-accent shrink-0 font-bold ${item.isOrdered?'':'mt-2.5 text-[6px]'}`}>{item.isOrdered?item.number:'●'}</span>
                   )}
-                  <span className="text-slate-200">{parseInline(item.text)}</span>
+                  <span className="text-ink">{parseInline(item.text)}</span>
                 </li>
               ))}
             </ul>
@@ -251,15 +251,15 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
         }
         if (b.type === 'table') {
            return (
-             <div key={idx} className="my-4 overflow-x-auto rounded-lg border border-slate-700 bg-slate-900/50 shadow-md">
+             <div key={idx} className="my-4 overflow-x-auto rounded-lg border border-line bg-card-2 shadow-md">
                 <table className="w-full text-left text-sm">
-                   {b.headers?.length && <thead className="bg-slate-900 text-slate-300 font-bold uppercase tracking-wider"><tr>{b.headers.map((h,i)=><th key={i} className="px-4 py-3 border-b border-slate-700">{parseInline(h)}</th>)}</tr></thead>}
-                   <tbody>{b.rows?.map((r,i)=><tr key={i} className="border-b border-slate-800 last:border-0 hover:bg-white/5 transition-colors">{r.cells.map((c,j)=><td key={j} className="px-4 py-3 border-r border-slate-800 last:border-0 whitespace-pre-wrap">{parseInline(c)}</td>)}</tr>)}</tbody>
+                   {b.headers?.length && <thead className="bg-card-2 text-muted font-bold uppercase tracking-wider"><tr>{b.headers.map((h,i)=><th key={i} className="px-4 py-3 border-b border-line">{parseInline(h)}</th>)}</tr></thead>}
+                   <tbody>{b.rows?.map((r,i)=><tr key={i} className="border-b border-line last:border-0 hover:bg-white/5 transition-colors">{r.cells.map((c,j)=><td key={j} className="px-4 py-3 border-r border-line last:border-0 whitespace-pre-wrap">{parseInline(c)}</td>)}</tr>)}</tbody>
                 </table>
              </div>
            );
         }
-        return <p key={idx} className="text-base leading-7 text-slate-200">{parseInline(b.content || "")}</p>;
+        return <p key={idx} className="text-base leading-7 text-ink">{parseInline(b.content || "")}</p>;
       })}
     </div>
   );
@@ -269,8 +269,8 @@ const GroundingSources: React.FC<{ metadata: any }> = ({ metadata }) => {
   if (!metadata || !metadata.groundingChunks || metadata.groundingChunks.length === 0) return null;
 
   return (
-    <div className="mt-4 pt-3 border-t border-slate-800/50 flex flex-col gap-2">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+    <div className="mt-4 pt-3 border-t border-line flex flex-col gap-2">
+      <span className="text-[10px] font-bold text-faint uppercase tracking-widest flex items-center gap-1">
          <Globe size={10} /> SOURCES & GROUNDING
       </span>
       <div className="flex flex-wrap gap-2">
@@ -282,7 +282,7 @@ const GroundingSources: React.FC<{ metadata: any }> = ({ metadata }) => {
                 href={chunk.web.uri} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-full text-xs text-cyan-400 hover:bg-slate-800 hover:border-cyan-500/30 transition-all max-w-xs truncate"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-card-2 border border-line rounded-full text-xs text-accent hover:bg-card-2 hover:border-line transition-all max-w-xs truncate"
               >
                 <Globe size={12} />
                 <span className="truncate">{chunk.web.title || new URL(chunk.web.uri).hostname}</span>
@@ -296,7 +296,7 @@ const GroundingSources: React.FC<{ metadata: any }> = ({ metadata }) => {
                 href={chunk.maps.uri} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-full text-xs text-amber-400 hover:bg-slate-800 hover:border-amber-500/30 transition-all max-w-xs truncate"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-card-2 border border-line rounded-full text-xs text-amber-400 hover:bg-card-2 hover:border-amber-500/30 transition-all max-w-xs truncate"
               >
                 <MapPin size={12} />
                 <span className="truncate">{chunk.maps.title || "Google Maps Location"}</span>
@@ -322,7 +322,7 @@ const MessageContent = React.memo<MessageContentProps>(({ text = "", isStreaming
               <img 
                 src={img} 
                 alt="Attachment" 
-                className="max-w-[200px] max-h-[200px] rounded-lg border border-slate-700 bg-slate-950/50 object-cover shadow-lg hover:border-cyan-500/50 transition-colors" 
+                className="max-w-[200px] max-h-[200px] rounded-lg border border-line bg-card-2 object-cover shadow-card hover:border-accent transition-colors" 
               />
             </div>
           ))}
@@ -337,7 +337,7 @@ const MessageContent = React.memo<MessageContentProps>(({ text = "", isStreaming
         const content = match ? part.slice(match[0].length) : part;
         return <CodeBlock key={index} content={content} language={lang} />;
       })}
-      {isStreaming && <span className="inline-block w-2 h-5 bg-cyan-400 animate-pulse ml-1 align-middle rounded-sm"></span>}
+      {isStreaming && <span className="inline-block w-2 h-5 bg-accent animate-pulse ml-1 align-middle rounded-sm"></span>}
       
       {/* Display Sources if available */}
       <GroundingSources metadata={groundingMetadata} />

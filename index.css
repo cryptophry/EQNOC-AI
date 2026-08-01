@@ -2,81 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- App base --- */
+/* ACR-aligned design tokens. Light by default; dark follows the OS preference.
+   Component code references these via Tailwind (bg-app, text-ink, border-line, …). */
+:root {
+  --app-bg: #f2f5f9;
+  --app-bg-grad: radial-gradient(120% 80% at 50% -10%, #ffffff, #eef2f7 60%);
+  --card: #ffffff;
+  --card-2: #f7f9fc;
+  --line: rgba(11, 27, 43, 0.10);
+  --line-strong: rgba(11, 27, 43, 0.16);
+  --ink: #0b1b2b;
+  --muted: #5b6b80;
+  --faint: #8093ab;
+  --accent: #1d6ff2;
+  --accent-2: #4a93ff;
+  --accent-strong: #0046cc;
+  --accent-ink: #ffffff;
+  --ok: #2b8a3e;
+  --warn: #b7791f;
+  --danger: #dc2f4c;
+  --code-bg: #f2f5fa;
+  --code-ink: #1b3a5c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: #0c1420;
+    --app-bg-grad: radial-gradient(120% 80% at 50% -10%, #16304f, #0c1420 60%);
+    --card: #13202f;
+    --card-2: #172232;
+    --line: rgba(233, 239, 247, 0.08);
+    --line-strong: rgba(233, 239, 247, 0.14);
+    --ink: #e9eff7;
+    --muted: #8b99ab;
+    --faint: #5f7186;
+    --accent: #4d9fff;
+    --accent-2: #4a93ff;
+    --accent-strong: #1d6ff2;
+    --accent-ink: #ffffff;
+    --ok: #40c057;
+    --warn: #fbbf24;
+    --danger: #ff6b6b;
+    --code-bg: #0b1522;
+    --code-ink: #bcd3ee;
+  }
+}
+
+html, body, #root { height: 100%; }
 body {
-  background-color: #020617;
-  color: #f1f5f9;
-  font-weight: 500;
-  font-size: 16px;
+  margin: 0;
+  background: var(--app-bg-grad);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* --- Jarvis UI helpers --- */
-.jarvis-panel {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
-}
-.jarvis-text {
-  text-shadow: 0 0 5px rgba(34, 211, 238, 0.5);
-}
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Custom selection color for better visibility */
-::selection {
-  background-color: rgba(34, 211, 238, 0.3);
-  color: #fff;
-}
+/* Soft focus ring used on the primary inputs, matching ACR */
+.focus-ring:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
 
-/* --- CRT & Cyberpunk effects --- */
-.scanlines {
-  background: linear-gradient(
-    to bottom,
-    rgba(255, 255, 255, 0),
-    rgba(255, 255, 255, 0) 50%,
-    rgba(0, 0, 0, 0.2) 50%,
-    rgba(0, 0, 0, 0.2)
-  );
-  background-size: 100% 4px;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 9999;
-  pointer-events: none;
-  opacity: 0.15;
-}
-
-@keyframes pulse-border-fast {
-  0%, 100% {
-    border-color: rgba(6, 182, 212, 0.3);
-    box-shadow: 0 0 10px rgba(6, 182, 212, 0.05);
-  }
-  50% {
-    border-color: rgba(34, 211, 238, 0.8);
-    box-shadow: 0 0 25px rgba(34, 211, 238, 0.3);
-  }
-}
-
-.thinking-state {
-  animation: pulse-border-fast 1.2s infinite ease-in-out;
-  border-width: 1px;
-}
-
-/* Respect users who prefer reduced motion — disable the heavy pulse/spin/marquee
-   animations that otherwise run continuously. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

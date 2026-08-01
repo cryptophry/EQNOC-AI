@@ -3,7 +3,7 @@
 // Exports keep the same names/signatures as the old services/gemini.ts so
 // components did not need rewiring.
 
-import { Session, CommandRef, FlowNode } from "../types";
+import { Session } from "../types";
 
 const API_URL = '/api/ai';
 const LOGIN_URL = '/api/login';
@@ -57,20 +57,6 @@ export async function login(password: string): Promise<void> {
 }
 
 // --- Types (unchanged from the Gemini version) ---
-
-export interface RegexResult {
-  cisco: string;
-  juniper: string;
-  grep: string;
-  explanation: string;
-}
-
-export interface MacLookupResult {
-  vendor: string;
-  country: string;
-  isPrivate: boolean;
-}
-
 
 // Shape of chunks yielded by ChatSession.sendMessageStream — mirrors the parts
 // of Gemini's GenerateContentResponse that App.tsx actually used.
@@ -143,13 +129,6 @@ export function extractJson<T>(text: string): T | null {
   return null;
 }
 
-async function generateJson<T>(prompt: string): Promise<T | null> {
-  const text = await generateText(
-    `${prompt}\n\nIMPORTANT: Respond with ONLY the raw JSON. No markdown fences, no commentary.`
-  );
-  return extractJson<T>(text);
-}
-
 // --- Health check (drives the ONLINE/OFFLINE indicator) ---
 
 export async function checkAiHealth(): Promise<{ ok: boolean; configured: boolean; model?: string }> {
@@ -169,38 +148,9 @@ const CHAT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'start_triage_flow',
-      description: 'Initiate the visual troubleshooting flowchart for complex faults.',
-      parameters: {
-        type: 'object',
-        properties: {
-          faultDescription: { type: 'string', description: 'Brief description of the issue.' }
-        },
-        required: ['faultDescription']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
       name: 'generate_shift_report',
       description: 'Generate a handover report for the current shift.',
       parameters: { type: 'object', properties: {} }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'manage_incident',
-      description: 'Update the status or delete a shift incident item.',
-      parameters: {
-        type: 'object',
-        properties: {
-          incidentId: { type: 'string', description: 'The unique ID of the incident.' },
-          action: { type: 'string', description: 'Action to perform: RESOLVED, MONITORING, DELETE, OPEN' }
-        },
-        required: ['incidentId', 'action']
-      }
     }
   },
   {
@@ -435,20 +385,6 @@ export const createChatSession = (history?: any[]) => {
 
 // --- Feature functions (same signatures as before) ---
 
-export const findRelevantHistory = async (query: string, sessions: Session[]): Promise<string> => {
-  const relevant = sessions.filter(s =>
-    s.title.toLowerCase().includes(query.toLowerCase()) ||
-    s.messages.some(m => m.text.toLowerCase().includes(query.toLowerCase()))
-  ).slice(0, 3);
-
-  if (relevant.length === 0) return '';
-
-  return `RELEVANT PAST SESSIONS:\n${relevant.map(s =>
-    `- [${new Date(s.timestamp).toLocaleDateString()}] "${s.title}": ${s.messages[1]?.text?.slice(0, 100)}...`
-  ).join('\n')}`;
-};
-
-
 export const generateShiftHandover = async (sessions: Session[]): Promise<string> => {
   const sessionSummary = sessions.map(s => `
     - Time: ${new Date(s.timestamp).toLocaleTimeString()}
@@ -503,111 +439,5 @@ export const generateShiftHandover = async (sessions: Session[]): Promise<string
     `;
 
   return (await generateText(prompt)) || "Report generation failed.";
-};
-
-export const generateIncidentSummary = async (session: Session, focusText: string): Promise<string> => {
-  const prompt = `
-    Summarize this specific incident based on the chat logs.
-    Focus on: Root Cause, Resolution, and Timeline.
-
-    Session Title: ${session.title}
-    Focus Activity: ${focusText}
-
-    Logs:
-    ${session.messages.map(m => `${m.role}: ${m.text}`).join('\n')}
-    `;
-
-  return (await generateText(prompt)) || "Summary generation failed.";
-};
-
-export const detectSessionIncidents = async (session: Session): Promise<{ title: string, status: string, timestamp: string }[]> => {
-  const prompt = `
-    Analyze this chat session. Identify distinct technical incidents.
-    Return JSON array: [{ "title": string, "status": "RESOLVED" | "MONITORING" | "OPEN", "timestamp": ISOString }]
-
-    Chat:
-    ${session.messages.map(m => `${m.timestamp}: ${m.text}`).join('\n')}
-    `;
-
-  return (await generateJson<{ title: string, status: string, timestamp: string }[]>(prompt)) || [];
-};
-
-export const generateTroubleshootingFlow = async (description: string): Promise<FlowNode | null> => {
-  const prompt = `
-    Create a troubleshooting flowchart for this network issue: "${description}".
-    Return a JSON object representing a decision tree.
-
-    Schema:
-    interface FlowNode {
-      id: string;
-      title: string;
-      description?: string;
-      type: 'action' | 'command' | 'decision' | 'solution';
-      command?: string;
-      branches?: { label: string, node: FlowNode }[];
-    }
-
-    Example: "If ping fails, branch to 'Check ARP'. If ping works, branch to 'Check BGP'."
-    Make it technical (Cisco/Juniper commands).
-    `;
-
-  return generateJson<FlowNode>(prompt);
-};
-
-export const generateCommandDetails = async (cmdInput: string): Promise<CommandRef | null> => {
-  const prompt = `
-    User wants to add this command to the library: "${cmdInput}".
-    Generate a JSON object with:
-    {
-      "title": string (Short concise title),
-      "cisco": string (IOS/IOS-XR syntax),
-      "juniper": string (Junos syntax),
-      "desc": string (Short description),
-      "category": string[] (e.g. ["l2", "bgp", "phys"])
-    }
-    If the command doesn't exist in one vendor, provide the best equivalent or "N/A".
-    `;
-
-  return generateJson<CommandRef>(prompt);
-};
-
-export const generateRegex = async (description: string): Promise<RegexResult | null> => {
-  const prompt = `
-    Generate regex for network CLI filtering based on: "${description}".
-    Return JSON:
-    {
-      "cisco": string (include/exclude),
-      "juniper": string (match/except),
-      "grep": string,
-      "explanation": string
-    }
-    `;
-
-  return generateJson<RegexResult>(prompt);
-};
-
-export const lookupMacVendor = async (oui: string): Promise<MacLookupResult | null> => {
-  const prompt = `
-    Identify the vendor for MAC OUI: ${oui}.
-    Return JSON: { "vendor": string, "country": string, "isPrivate": boolean }.
-    If unknown, guess based on common prefixes or return "Unknown".
-    `;
-
-  return generateJson<MacLookupResult>(prompt);
-};
-
-export const analyzeRawLogs = async (logs: string): Promise<string> => {
-  const prompt = `
-    Analyze these raw network logs.
-    Identify:
-    1. Root Cause Patterns
-    2. Timestamps of failure
-    3. Correlated events
-
-    Logs:
-    ${logs.substring(0, 50000)}
-    `;
-
-  return (await generateText(prompt)) || "Analysis failed.";
 };
 
