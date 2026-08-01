@@ -3,7 +3,7 @@
 // Exports keep the same names/signatures as the old services/gemini.ts so
 // components did not need rewiring.
 
-import { Session, Message, CommandRef, FlowNode } from "../types";
+import { Session, CommandRef, FlowNode } from "../types";
 import { EQNOC_KNOWLEDGE_BASE } from "../constants";
 
 const API_URL = '/api/ai';
@@ -72,45 +72,6 @@ export interface MacLookupResult {
   isPrivate: boolean;
 }
 
-export interface ChangeAuditResult {
-  score: number;
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  impactAnalysis: string[];
-  preChecks: string[];
-  postChecks: string[];
-  rollbackPlan: string;
-}
-
-export interface FiberPathData {
-  start: { x: number, y: number, name: string };
-  end: { x: number, y: number, name: string };
-  route: { x: number, y: number }[];
-  distance: number;
-  estimatedLoss: number;
-  events: { distance: number, type: 'SPLICE' | 'CONNECTOR' | 'BEND' | 'CUT', loss: number }[];
-}
-
-export interface TicketDraft {
-  shortDescription: string;
-  description: string;
-  configurationItem: string;
-  impact: string;
-  urgency: string;
-  workNotes: string;
-}
-
-export interface OutageRecord {
-  council?: string;
-  type: string;
-  suburb: string;
-  status: string;
-  location: string;
-  eventId?: string;
-  startTime?: string;
-  customersAffected: number | string;
-  estFix: string;
-  description: string;
-}
 
 // Shape of chunks yielded by ChatSession.sendMessageStream — mirrors the parts
 // of Gemini's GenerateContentResponse that App.tsx actually used.
@@ -603,92 +564,3 @@ export const analyzeRawLogs = async (logs: string): Promise<string> => {
   return (await generateText(prompt)) || "Analysis failed.";
 };
 
-export const generateNetworkConfig = async (intent: string, vendor: string): Promise<string> => {
-  const prompt = `
-    Generate network configuration.
-    Vendor: ${vendor}
-    Intent: ${intent}
-
-    Output ONLY the configuration commands in a code block.
-    `;
-  return (await generateText(prompt)) || "";
-};
-
-export const assessChangeRisk = async (script: string): Promise<ChangeAuditResult | null> => {
-  const prompt = `
-    Audit this network change script for risk.
-    Return JSON:
-    {
-      "score": number (0-100),
-      "riskLevel": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL",
-      "impactAnalysis": string[],
-      "preChecks": string[],
-      "postChecks": string[],
-      "rollbackPlan": string
-    }
-
-    Script:
-    ${script}
-    `;
-
-  return generateJson<ChangeAuditResult>(prompt);
-};
-
-export const generateCommunication = async (type: string, context: string): Promise<string> => {
-  const prompt = `
-    Draft a professional communication.
-    Type: ${type}
-    Context:
-    ${context}
-    `;
-  return (await generateText(prompt)) || "";
-};
-
-export const generateTopologyMermaid = async (description: string): Promise<string> => {
-  const prompt = `
-    Create a Mermaid.js flowchart (graph TD) representing the network topology described below.
-    Use standard Mermaid syntax. Return ONLY the code.
-
-    Description:
-    ${description}
-    `;
-  const text = await generateText(prompt);
-  return text?.replace(/```mermaid/g, '').replace(/```/g, '').trim() || "";
-};
-
-export const generateTicketDraft = async (messages: Message[]): Promise<TicketDraft | null> => {
-  const prompt = `
-    Create a Ticket Draft from this chat session.
-    Return JSON:
-    {
-      "shortDescription": string,
-      "description": string,
-      "configurationItem": string,
-      "impact": "High"|"Medium"|"Low",
-      "urgency": "High"|"Medium"|"Low",
-      "workNotes": string
-    }
-
-    Chat:
-    ${messages.map(m => m.text).join('\n')}
-    `;
-
-  return generateJson<TicketDraft>(prompt);
-};
-
-export const generateGeoFiberPath = async (query: string): Promise<FiberPathData | null> => {
-  const prompt = `
-    Generate simulated GIS fiber path data for: "${query}".
-    Return JSON:
-    {
-      "start": { "x": number (0-100), "y": number (0-100), "name": string },
-      "end": { "x": number (0-100), "y": number (0-100), "name": string },
-      "route": Array<{"x": number, "y": number}> (10-20 points creating a path),
-      "distance": number (km),
-      "estimatedLoss": number (dB),
-      "events": Array<{ "distance": number, "type": "SPLICE"|"CONNECTOR"|"BEND"|"CUT", "loss": number }>
-    }
-    `;
-
-  return generateJson<FiberPathData>(prompt);
-};

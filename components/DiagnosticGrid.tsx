@@ -1,6 +1,12 @@
 import React from 'react';
 import { DIAGNOSTIC_MODULES } from '../constants';
-import * as Icons from 'lucide-react';
+import { Activity, Cable, FileText, Layers, Network, Router, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
+
+// Explicit map (only the icons DIAGNOSTIC_MODULES references) so the whole
+// lucide-react library isn't pulled into the bundle by a namespace import.
+const ICON_MAP: Record<string, LucideIcon> = {
+  Activity, Cable, FileText, Layers, Network, Router, ShieldCheck, Waypoints,
+};
 
 interface Props {
   onModuleClick: (moduleId: string, title: string) => void;
@@ -11,8 +17,7 @@ const DiagnosticGrid: React.FC<Props> = ({ onModuleClick, activeModuleId }) => {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {DIAGNOSTIC_MODULES.map((mod) => {
-        // @ts-ignore
-        const IconComponent = Icons[mod.icon] || Icons.Activity;
+        const IconComponent = ICON_MAP[mod.icon] || Activity;
         const isActive = activeModuleId === mod.id;
 
         return (

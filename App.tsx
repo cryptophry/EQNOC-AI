@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow, checkAiHealth, StreamChunk, isAuthenticated as hasAuthToken, clearAuth, AuthError } from './services/ai';
+import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateTroubleshootingFlow, checkAiHealth, StreamChunk, isAuthenticated as hasAuthToken, clearAuth, AuthError } from './services/ai';
 import { Message, MessageRole, TriageStatus, FlowNode, Session, ActivityItem } from './types';
-import { Mic, Send, Bot, User, Power, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, FileText, Loader2, ScanSearch, Clock, Paperclip, Image as ImageIcon, X, ClipboardList, Layers, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Send, Bot, User, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, Loader2, ScanSearch, Paperclip, X, ClipboardList, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import CommandPanel from './components/CommandPanel';
 import MessageContent from './components/MessageContent';
 import NetworkTools from './components/NetworkTools';
@@ -390,18 +390,6 @@ const App: React.FC = () => {
     };
   }, [resize, stopResizing]);
 
-  const scrollToTop = () => {
-    if (chatContainerRef.current) {
-        if (chatContainerRef.current.scrollTop < 50) {
-           requestAnimationFrame(() => {
-            if (chatContainerRef.current) {
-               chatContainerRef.current.scrollTop = 0;
-            }
-          });
-        }
-    }
-  };
-
   // ONLINE indicator now reflects whether the /api/ai proxy is configured.
   const [isSystemOnline, setIsSystemOnline] = useState(false);
   useEffect(() => {
@@ -566,8 +554,8 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       setMessages(prev => [botMsg, ...prev]);
       
       let fullText = '';
-      let groundingMetadata: any = null;
-      let functionCalls: any[] = [];
+      const groundingMetadata: any = null;
+      const functionCalls: any[] = [];
 
       // Exhaust stream first to ensure the Model turn is recorded in history
       for await (const chunk of result) {
