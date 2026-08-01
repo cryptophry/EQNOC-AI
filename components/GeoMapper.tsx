@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateGeoFiberPath, FiberPathData } from '../services/gemini';
+import { generateGeoFiberPath, FiberPathData } from '../services/ai';
 import { Map, Loader2, Search, Zap, Crosshair, Navigation, Ruler, Activity } from 'lucide-react';
 
 const GeoMapper: React.FC = () => {

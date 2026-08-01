@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateTicketDraft, TicketDraft } from '../services/gemini';
+import { generateTicketDraft, TicketDraft } from '../services/ai';
 import { Message } from '../types';
 import { Ticket, Copy, Check, X, Send, Loader2, Server, AlertTriangle } from 'lucide-react';
 

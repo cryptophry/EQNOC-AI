@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateTroubleshootingFlow } from '../services/gemini';
+import { generateTroubleshootingFlow } from '../services/ai';
 import { FlowNode } from '../types';
 import { Search, GitBranch, Terminal, CheckCircle2, AlertTriangle, Copy, RefreshCw, ChevronDown, ChevronRight, BrainCircuit, ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
 

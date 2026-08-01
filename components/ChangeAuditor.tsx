@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { assessChangeRisk, ChangeAuditResult } from '../services/gemini';
+import { assessChangeRisk, ChangeAuditResult } from '../services/ai';
 import { ShieldAlert, Activity, CheckSquare, Undo2, Play, Loader2, AlertTriangle, FileWarning, Search } from 'lucide-react';
 
 const ChangeAuditor: React.FC = () => {

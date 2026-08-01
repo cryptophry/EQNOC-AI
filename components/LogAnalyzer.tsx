@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScanSearch, Loader2, CheckCircle2, AlertTriangle, FileText, Terminal } from 'lucide-react';
-import { analyzeRawLogs } from '../services/gemini';
+import { analyzeRawLogs } from '../services/ai';
 
 interface Props {
   // Optional controlled props for War Room persistence

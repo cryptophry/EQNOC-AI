@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { COMMAND_LIBRARY, DIAGNOSTIC_MODULES } from '../constants';
 import { Copy, Terminal, Filter, Search, X, Info, HelpCircle, Play, Loader2, Check, Star, Plus, Cloud, Database, Trash2, Wifi, Layers } from 'lucide-react';
 import { CommandRef } from '../types';
-import { generateCommandDetails } from '../services/gemini';
+import { generateCommandDetails } from '../services/ai';
 
 interface Props {
   activeModuleId: string | null;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateTopologyMermaid } from '../services/gemini';
+import { generateTopologyMermaid } from '../services/ai';
 import MermaidDiagram from './MermaidDiagram';
 import { Network, Search, Loader2, RefreshCw, FileText } from 'lucide-react';
 

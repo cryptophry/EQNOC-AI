@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Session, ActivityItem } from '../types';
-import { generateShiftHandover, generateIncidentSummary, detectSessionIncidents } from '../services/gemini';
+import { generateShiftHandover, generateIncidentSummary, detectSessionIncidents } from '../services/ai';
 import { ClipboardList, Clock, CheckCircle2, AlertTriangle, Loader2, Copy, Check, FileSearch, Sparkles, FlaskConical, RotateCcw, Activity } from 'lucide-react';
 
 interface Props {

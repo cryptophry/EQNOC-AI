@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateNetworkConfig } from '../services/gemini';
+import { generateNetworkConfig } from '../services/ai';
 import { PenTool, Loader2, Copy, Check, Terminal, Cpu } from 'lucide-react';
 
 const ConfigArchitect: React.FC = () => {

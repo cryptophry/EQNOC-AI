@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateCommunication } from '../services/gemini';
+import { generateCommunication } from '../services/ai';
 import { Mail, Loader2, Copy, Check, MessageSquare, Send, Plus, X, Trash2, ArrowLeft, Edit2 } from 'lucide-react';
 
 const CommCenter: React.FC = () => {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { OutageRecord } from '../services/gemini';
+import { OutageRecord } from '../services/ai';
 import { Zap, ZapOff, Loader2, RefreshCw, MapPin, Clock, Users, AlertTriangle, CheckCircle2, Search, Hash, Calendar, Radio } from 'lucide-react';
 
 interface Props {

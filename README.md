@@ -1,20 +1,33 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# NOC Assistant (EQNOC-AI)
 
-# Run and deploy your AI Studio app
+AI-powered network triage assistant for EQNOC L2/L3 services with a Jarvis-style interface.
 
-This contains everything you need to run your app locally.
+AI calls are routed through **OpenRouter** via a serverless proxy (`api/ai.js`) so the API key never reaches the browser. The model is configurable via an environment variable.
 
-View your app in AI Studio: https://ai.studio/apps/bcb6ee91-c9fe-463d-a179-b9ccc5e174ea
+## Environment variables
 
-## Run Locally
+| Variable | Required | Description |
+|---|---|---|
+| `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key (server-side only) |
+| `OPENROUTER_MODEL` | No | Model slug, defaults to `anthropic/claude-sonnet-4.5` |
 
-**Prerequisites:**  Node.js
+## Run locally
 
+Prerequisites: Node.js 20+
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Install dependencies: `npm install`
+2. Create `.env.local` with `OPENROUTER_API_KEY=sk-or-...`
+3. Start the API proxy: `npm run dev:api`
+4. In another terminal, start the app: `npm run dev`
+5. Open http://localhost:3000
+
+## Deploy (Vercel)
+
+1. Import the GitHub repo into Vercel (framework preset: Vite — auto-detected).
+2. Add `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) in Project → Settings → Environment Variables.
+3. Deploy. The `api/` directory is picked up automatically as serverless functions.
+
+## Notes
+
+- The former Gemini Live voice mode was removed in the OpenRouter migration.
+- All app state (sessions, notes, shift data, reminders) lives in browser localStorage.

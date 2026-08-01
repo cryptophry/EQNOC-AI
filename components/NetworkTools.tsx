@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calculator, FileDiff, StickyNote, ArrowRight, X, ScanSearch, Loader2, AlertTriangle, CheckCircle2, Binary, Search, Copy, Zap, Cpu, ScanLine, LayoutGrid, MousePointer2 } from 'lucide-react';
-import { generateRegex, RegexResult, lookupMacVendor, MacLookupResult } from '../services/gemini';
+import { generateRegex, RegexResult, lookupMacVendor, MacLookupResult } from '../services/ai';
 // analyzeRawLogs import removed as it is no longer used here
 
 interface Props {

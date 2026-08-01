@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow } from './services/gemini';
-import { Message, MessageRole, TriageMode, TriageStatus, FlowNode, Session, ActivityItem } from './types';
+import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow, checkAiHealth, StreamChunk } from './services/ai';
+import { Message, MessageRole, TriageStatus, FlowNode, Session, ActivityItem } from './types';
 import { Mic, Send, Bot, User, Power, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, FileText, Loader2, ScanSearch, Clock, Paperclip, Image as ImageIcon, X, ClipboardList, Layers, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import CommandPanel from './components/CommandPanel';
 import MessageContent from './components/MessageContent';
@@ -12,14 +12,11 @@ import ShiftHandoverDashboard from './components/ShiftHandoverDashboard';
 import ReminderModal, { Reminder } from './components/ReminderModal';
 import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
-import { useLiveApi } from './hooks/useLiveApi';
-import { GenerateContentResponse } from '@google/genai';
 
 const App: React.FC = () => {
   // Authentication State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  const [mode, setMode] = useState<TriageMode>('TEXT');
   const [triageStatus, setTriageStatus] = useState<TriageStatus>('pending');
   const [leftPanelMode, setLeftPanelMode] = useState<'DASHBOARD' | 'FAULT_ASSIST' | 'LOGS' | 'HANDOVER'>('DASHBOARD');
   
@@ -404,19 +401,11 @@ const App: React.FC = () => {
     }
   };
 
-  const { isConnected, isSpeaking, volume, connect, disconnect } = useLiveApi({
-    onTranscription: (text, type) => {
-      setMessages(prev => [{
-        id: Date.now().toString(),
-        role: MessageRole.USER,
-        text: text,
-        timestamp: new Date()
-      }, ...prev]);
-      
-      scrollToTop();
-      if (triageStatus === 'pending') setTriageStatus('active');
-    }
-  });
+  // ONLINE indicator now reflects whether the /api/ai proxy is configured.
+  const [isSystemOnline, setIsSystemOnline] = useState(false);
+  useEffect(() => {
+    checkAiHealth().then(h => setIsSystemOnline(h.ok && h.configured));
+  }, []);
 
   useEffect(() => {
     try {
@@ -581,14 +570,10 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
 
       // Exhaust stream first to ensure the Model turn is recorded in history
       for await (const chunk of result) {
-        const c = chunk as GenerateContentResponse;
-        
+        const c = chunk as StreamChunk;
+
         const chunkText = c.text || '';
         fullText += chunkText;
-        
-        if (c.candidates?.[0]?.groundingMetadata) {
-            groundingMetadata = c.candidates[0].groundingMetadata;
-        }
 
         // Accumulate function calls from ANY chunk
         if (c.functionCalls) {
@@ -756,7 +741,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
             const resStream = await chatSession.current.sendMessageStream({ message: toolResponses });
             
             for await (const subChunk of resStream) {
-                const sc = subChunk as GenerateContentResponse;
+                const sc = subChunk as StreamChunk;
                 fullText += sc.text || '';
                 setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText } : m));
             }
@@ -804,19 +789,6 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
   const handleFaultNodeClick = (node: FlowNode) => {
     processMessage(`Explain troubleshooting step "${node.title}": ${node.description || ''}`);
   };
-
-  const toggleLiveMode = async () => {
-    if (isConnected) {
-      await disconnect();
-      setMode('TEXT');
-    } else {
-      if (!process.env.GEMINI_API_KEY) { alert("API KEY MISSING"); return; }
-      await connect();
-      setMode('LIVE');
-    }
-  };
-
-  const isSystemOnline = !!process.env.GEMINI_API_KEY;
 
   if (!isAuthenticated) {
     return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
@@ -875,11 +847,8 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-700/80 rounded-xl p-2.5 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/20 shadow-lg">
                 <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors" title="Upload Image"><Paperclip size={20} /></button>
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
-                <button onClick={toggleLiveMode} className={`p-2.5 rounded-lg transition-all ${isConnected ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'}`} title={isConnected ? "Stop Live" : "Start Live"}>
-                {isConnected ? <Power size={20} /> : <Mic size={20} />}
-                </button>
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} onPaste={handlePaste} placeholder={isConnected ? "Listening..." : "Type query..."} disabled={isConnected || isLoading} className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 text-base h-full" />
-                <button onClick={handleSendMessage} disabled={(!input.trim() && !attachment) || isConnected || isLoading} className="p-2.5 text-cyan-400 hover:text-cyan-300 disabled:opacity-30 transition-colors"><Send size={20} /></button>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} onPaste={handlePaste} placeholder="Type query..." disabled={isLoading} className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 text-base h-full" />
+                <button onClick={handleSendMessage} disabled={(!input.trim() && !attachment) || isLoading} className="p-2.5 text-cyan-400 hover:text-cyan-300 disabled:opacity-30 transition-colors"><Send size={20} /></button>
             </div>
             {isRetrieving && <div className="absolute top-0 right-4 -mt-3 text-[10px] text-indigo-400 flex items-center gap-1 font-mono"><Loader2 size={8} className="animate-spin" /> Recalling...</div>}
         </div>
@@ -976,8 +945,8 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
 
            <button onClick={() => setIsCommandLibraryOpen(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-900/50 hover:bg-slate-800 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-400 transition-all text-xs font-bold"><Terminal size={14} /><span className="hidden sm:inline">COMMANDS</span></button>
            
-          <div className={`flex items-center gap-2 text-xs font-mono font-bold px-3 py-1.5 rounded-full border transition-all ${isConnected ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : isSystemOnline ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.1)]' : 'bg-red-900/10 text-red-500 border-red-900/30'}`}>
-            <Wifi size={14} className={isConnected ? "animate-pulse" : ""} /> {isConnected ? 'LIVE CONNECTED' : isSystemOnline ? 'SYSTEM ONLINE' : 'OFFLINE'}
+          <div className={`flex items-center gap-2 text-xs font-mono font-bold px-3 py-1.5 rounded-full border transition-all ${isSystemOnline ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.1)]' : 'bg-red-900/10 text-red-500 border-red-900/30'}`}>
+            <Wifi size={14} /> {isSystemOnline ? 'SYSTEM ONLINE' : 'OFFLINE'}
           </div>
         </div>
       </header>
