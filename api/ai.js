@@ -10,7 +10,9 @@
 //
 // Env vars:
 //   OPENROUTER_API_KEY - required
-//   OPENROUTER_MODEL   - optional, defaults to anthropic/claude-haiku-4.5
+//   OPENROUTER_MODEL   - optional, defaults to deepseek/deepseek-v4-flash-0731
+//                        (note: DeepSeek is text-only — image/photo paste needs a
+//                        vision model, e.g. anthropic/claude-haiku-4.5 or google/gemini-2.5-flash)
 //   APP_PASSWORD       - required (used to sign/verify auth tokens; see lib/auth.js)
 //   AUTH_SECRET        - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
@@ -18,7 +20,7 @@ import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } fr
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'anthropic/claude-haiku-4.5';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash-0731';
 
 // Guardrails
 const MAX_OUTPUT_TOKENS = 8000;    // server ceiling for max_tokens

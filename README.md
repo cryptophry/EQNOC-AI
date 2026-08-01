@@ -10,7 +10,7 @@ AI calls are routed through **OpenRouter** via serverless functions so the API k
 |---|---|---|
 | `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key (server-side only) |
 | `APP_PASSWORD` | Yes | Shared login password, verified server-side |
-| `OPENROUTER_MODEL` | No | Model slug, defaults to `anthropic/claude-haiku-4.5`. For lowest cost, `google/gemini-2.5-flash`. |
+| `OPENROUTER_MODEL` | No | Model slug, defaults to `deepseek/deepseek-v4-flash-0731` (very cheap, text-only). For image/photo support use a vision model like `anthropic/claude-haiku-4.5` or `google/gemini-2.5-flash`. |
 | `AUTH_SECRET` | No | HMAC secret for signing auth tokens; falls back to `APP_PASSWORD`. Set a long random value in production. |
 
 See `.env.example` for a template.
