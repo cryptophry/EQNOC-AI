@@ -69,7 +69,7 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
           </div>
         </form>
 
-        <p className="mt-2 text-faint text-[12px]">Authorised EQNOC staff only</p>
+        <p className="mt-2 text-faint text-[12px]">Authorised staff only</p>
       </main>
 
       <style>{`@keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }`}</style>
