@@ -1,5 +1,5 @@
 {
-  "name": "EQNOC Assistant",
+  "name": "Tech Assistant",
   "description": "AI assistant for EQNOC network operations (NOC) and field telecommunications crews — triage, test-result interpretation, equipment & standards, safety, and reporting.",
   "requestFramePermissions": []
 }

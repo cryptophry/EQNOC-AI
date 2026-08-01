@@ -1,4 +1,4 @@
-# EQNOC Assistant (EQNOC-AI)
+# Tech Assistant (EQNOC-AI)
 
 AI assistant for EQNOC network operations (NOC) and field telecommunications crews — chat-first triage, test-result interpretation, equipment & standards reference, safety guidance, and field/shift reporting. Installable PWA, light + dark.
 

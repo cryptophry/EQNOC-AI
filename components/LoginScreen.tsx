@@ -38,7 +38,7 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
           <Activity size={34} className="text-white" strokeWidth={2.2} />
         </div>
 
-        <h1 className="text-[22px] font-extrabold tracking-[-0.3px] mb-1">EQNOC Assistant</h1>
+        <h1 className="text-[22px] font-extrabold tracking-[-0.3px] mb-1">Tech Assistant</h1>
         <p className="text-muted text-[13px] mb-6">Network &amp; field telecom assistant</p>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-3">
