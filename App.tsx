@@ -319,7 +319,7 @@ const App: React.FC = () => {
   if (!isAuthenticated) return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
 
   return (
-    <div className="min-h-screen w-full flex flex-col">
+    <div className="min-h-screen w-full flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {/* Alarm banner */}
       {activeAlarms.length > 0 && (
         <div className="bg-danger text-white text-[13px] font-semibold px-4 py-2 flex items-center gap-2" role="alert">
