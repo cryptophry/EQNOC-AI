@@ -388,7 +388,7 @@ const App: React.FC = () => {
                 }`} style={msg.role === MessageRole.MODEL ? { background: 'color-mix(in srgb, var(--accent) 14%, transparent)' } : {}}>
                   {msg.role === MessageRole.USER ? 'You' : msg.role === MessageRole.SYSTEM ? '!' : '◆'}
                 </div>
-                <div className={`max-w-[88%] sm:max-w-[86%] rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13px] sm:text-[14.5px] leading-relaxed ${
+                <div className={`max-w-[88%] sm:max-w-[86%] rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13px] sm:text-[14px] leading-relaxed ${
                   msg.role === MessageRole.USER ? 'text-white' : 'bg-card-2 border border-line'
                 }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(155deg, var(--accent-2), var(--accent))' } : {}}>
                   {msg.role === MessageRole.USER
