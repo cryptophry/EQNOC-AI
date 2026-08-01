@@ -4,7 +4,6 @@
 // components did not need rewiring.
 
 import { Session, CommandRef, FlowNode } from "../types";
-import { EQNOC_KNOWLEDGE_BASE } from "../constants";
 
 const API_URL = '/api/ai';
 const LOGIN_URL = '/api/login';
@@ -83,7 +82,7 @@ export interface StreamChunk {
 
 // --- Low-level helpers ---
 
-async function callApi(body: any): Promise<Response> {
+async function callApi(body: any, signal?: AbortSignal): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
@@ -91,6 +90,7 @@ async function callApi(body: any): Promise<Response> {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    signal,
   });
   if (res.status === 401) {
     clearAuth();
@@ -112,11 +112,15 @@ async function callApi(body: any): Promise<Response> {
   return res;
 }
 
+// One-shot utility calls get a 60s timeout so a hung request doesn't spin a
+// component's loading state forever.
+const ONE_SHOT_TIMEOUT_MS = 60_000;
+
 async function generateText(prompt: string, system?: string): Promise<string> {
   const messages: any[] = [];
   if (system) messages.push({ role: 'system', content: system });
   messages.push({ role: 'user', content: prompt });
-  const res = await callApi({ messages });
+  const res = await callApi({ messages }, AbortSignal.timeout(ONE_SHOT_TIMEOUT_MS));
   const data = await res.json();
   return data.choices?.[0]?.message?.content || '';
 }
@@ -266,12 +270,53 @@ type GeminiStylePart = { text?: string; inlineData?: { mimeType: string; data: s
 type GeminiStyleToolResponse = { functionResponse: { id?: string; name: string; response: any } };
 type SendMessageInput = string | GeminiStylePart[] | GeminiStyleToolResponse[];
 
+// Keep the client-side conversation bounded: without this, a long shift grows
+// the request every turn until it exceeds the model context window (400s).
+// Counts individual messages (a turn may be user + assistant + tool messages).
+const MAX_HISTORY_MESSAGES = 40;
+
+// Trim to the most recent messages, cutting only at a clean user-turn boundary
+// so we never orphan a `tool` message or an assistant(tool_calls) from its tools.
+// Pure + exported for unit testing.
+export function windowHistory<T extends { role: string }>(history: T[], max: number): T[] {
+  if (history.length <= max) return history;
+  let start = history.length - max;
+  while (start < history.length && history[start].role !== 'user') start++;
+  if (start > 0 && start < history.length) return history.slice(start);
+  return history;
+}
+
 export class ChatSession {
   private history: any[] = [];
+  private abortController: AbortController | null = null;
 
-  constructor(systemInstruction: string, history?: any[]) {
-    this.history.push({ role: 'system', content: systemInstruction });
+  // The knowledge-base system prompt is injected server-side (api/ai.js) via the
+  // useKnowledgeBase flag, so it never ships in the client bundle and isn't
+  // re-sent from the browser each turn. Client history holds only the turns.
+  constructor(history?: any[]) {
     if (history) this.history.push(...history);
+  }
+
+  // Cancel any in-flight request (called when a new message is sent, or on unmount).
+  abort() {
+    this.abortController?.abort();
+    this.abortController = null;
+  }
+
+  // Drop base64 image parts from past user turns — the model already produced a
+  // text response for them, so re-sending the image every turn just wastes tokens.
+  private stripImagesFromHistory() {
+    for (const m of this.history) {
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        m.content = m.content.map((p: any) =>
+          p?.type === 'image_url' ? { type: 'text', text: '[image omitted from history]' } : p
+        );
+      }
+    }
+  }
+
+  private trimHistory() {
+    this.history = windowHistory(this.history, MAX_HISTORY_MESSAGES);
   }
 
   async *sendMessageStream({ message }: { message: SendMessageInput }): AsyncGenerator<StreamChunk> {
@@ -302,7 +347,11 @@ export class ChatSession {
       this.history.push({ role: 'user', content });
     }
 
-    const res = await callApi({ messages: this.history, tools: CHAT_TOOLS, stream: true });
+    this.abortController = new AbortController();
+    const res = await callApi(
+      { messages: this.history, tools: CHAT_TOOLS, stream: true, useKnowledgeBase: true },
+      this.abortController.signal
+    );
 
     // Parse the SSE stream
     const reader = res.body!.getReader();
@@ -363,6 +412,10 @@ export class ChatSession {
     }
     this.history.push(assistantMsg);
 
+    // Turn complete: drop now-redundant images and bound the history length.
+    this.stripImagesFromHistory();
+    this.trimHistory();
+
     // Emit completed function calls as a final chunk (Gemini-style)
     if (completedCalls.length > 0) {
       yield {
@@ -376,11 +429,8 @@ export class ChatSession {
   }
 }
 
-export const createChatSession = (customKb?: string, history?: any[]) => {
-  const systemInstruction = customKb
-    ? `${EQNOC_KNOWLEDGE_BASE}\n\nADDITIONAL CONTEXT (PRIORITY):\n${customKb}`
-    : EQNOC_KNOWLEDGE_BASE;
-  return new ChatSession(systemInstruction, history);
+export const createChatSession = (history?: any[]) => {
+  return new ChatSession(history);
 };
 
 // --- Feature functions (same signatures as before) ---
@@ -398,9 +448,6 @@ export const findRelevantHistory = async (query: string, sessions: Session[]): P
   ).join('\n')}`;
 };
 
-export const embedText = async (_text: string): Promise<number[] | undefined> => {
-  return undefined;
-};
 
 export const generateShiftHandover = async (sessions: Session[]): Promise<string> => {
   const sessionSummary = sessions.map(s => `

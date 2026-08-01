@@ -74,6 +74,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
 
   // AI Analysis Effect (Incident Detection)
   useEffect(() => {
+    let cancelled = false;
     const analyzeSessions = async () => {
         // Find sessions that need analysis (either new or updated)
         const sessionsToAnalyze = filteredSessions.filter(s => {
@@ -85,8 +86,16 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
 
         // Process sequentially to avoid rate limits, or batch if possible
         for (const session of sessionsToAnalyze) {
-             const incidents = await detectSessionIncidents(session);
-             
+             if (cancelled) return;
+             let incidents;
+             try {
+                incidents = await detectSessionIncidents(session);
+             } catch (e) {
+                console.error('Incident detection failed', e);
+                continue;
+             }
+             if (cancelled) return;
+
              const newItems: ActivityItem[] = incidents.map((inc, idx) => {
                  // Validate status string to match union type
                  let status: ActivityItem['status'] = 'OPEN';
@@ -95,12 +104,18 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
                      status = inc.status as ActivityItem['status'];
                  }
 
+                 // The AI-supplied timestamp can be unparseable ("last Tuesday").
+                 // Fall back to the session time so the incident isn't silently
+                 // dropped by downstream date filters / sorts.
+                 const parsed = new Date(inc.timestamp);
+                 const timestamp = isNaN(parsed.getTime()) ? new Date(session.timestamp) : parsed;
+
                  return {
                      uniqueId: `${session.id}-smart-${idx}`,
                      sessionId: session.id,
                      sessionTitle: session.title,
                      text: inc.title,
-                     timestamp: new Date(inc.timestamp),
+                     timestamp,
                      status: status,
                      isAiGrouped: true
                  };
@@ -118,7 +133,7 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
 
     // Debounce analysis to avoid spamming while typing
     const timer = setTimeout(analyzeSessions, 800);
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [filteredSessions]); // smartCache excluded to prevent loops
 
   const handleResetShift = () => {
@@ -136,9 +151,15 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
     setActiveCardId(null);
     setReportTitle('GLOBAL SHIFT HANDOVER');
     setReport(''); // Clear immediately to show loading state specifically for report
-    const result = await generateShiftHandover(filteredSessions);
-    setReport(result);
-    setIsGenerating(false);
+    try {
+      const result = await generateShiftHandover(filteredSessions);
+      setReport(result);
+    } catch (e) {
+      console.error('Report generation failed', e);
+      setReport('Report generation failed — the AI service is unavailable. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleActivityClick = async (activity: ActivityItem) => {
@@ -155,9 +176,15 @@ const ShiftHandoverDashboard: React.FC<Props> = ({ sessions, persistedState, onS
     setReport(''); // Clear to show loading
     
     // Pass the specific activity text as the focus topic to isolate the incident
-    const summary = await generateIncidentSummary(session, activity.text);
-    setReport(summary);
-    setIsGenerating(false);
+    try {
+      const summary = await generateIncidentSummary(session, activity.text);
+      setReport(summary);
+    } catch (e) {
+      console.error('Incident summary failed', e);
+      setReport('Summary generation failed — the AI service is unavailable. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleCopy = () => {

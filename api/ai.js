@@ -15,6 +15,7 @@
 //   AUTH_SECRET        - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
 import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
+import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-4.5';
@@ -79,10 +80,17 @@ export default async function handler(req, res) {
     return;
   }
 
+  // --- Inject the knowledge-base system prompt server-side when requested ---
+  // (chat sessions set useKnowledgeBase; one-shot utility calls don't need it.)
+  let messages = body.messages;
+  if (body.useKnowledgeBase) {
+    messages = [{ role: 'system', content: EQNOC_KNOWLEDGE_BASE }, ...messages];
+  }
+
   // --- Build payload: model is server-controlled, max_tokens clamped ---
   const payload = {
     model, // deliberately ignore body.model — clients cannot pick the model
-    messages: body.messages,
+    messages,
     stream: !!body.stream,
   };
   if (Array.isArray(body.tools) && body.tools.length > 0) payload.tools = body.tools;

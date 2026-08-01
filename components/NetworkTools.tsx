@@ -336,10 +336,16 @@ const MacOuiLookup = () => {
       setBits({ binary, ul, ig });
     }
 
-    // Lookup Vendor via Gemini
-    const data = await lookupMacVendor(raw.substring(0, 6));
-    setResult(data);
-    setLoading(false);
+    // Lookup Vendor via AI
+    try {
+      const data = await lookupMacVendor(raw.substring(0, 6));
+      setResult(data);
+    } catch (e) {
+      console.error('MAC lookup failed', e);
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -505,9 +511,15 @@ const RegexBuilder = () => {
   const handleGenerate = async () => {
     if (!input.trim()) return;
     setLoading(true);
-    const data = await generateRegex(input);
-    setResult(data);
-    setLoading(false);
+    try {
+      const data = await generateRegex(input);
+      setResult(data);
+    } catch (e) {
+      console.error('Regex generation failed', e);
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const copyToClipboard = (text: string, type: string) => {

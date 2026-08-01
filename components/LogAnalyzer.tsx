@@ -39,9 +39,15 @@ const LogAnalyzer: React.FC<Props> = ({ persistedLogs, onLogsChange, analysisRes
   const handleAnalyze = async () => {
     if (!logs.trim()) return;
     setIsAnalyzing(true);
-    const result = await analyzeRawLogs(logs);
-    handleAnalysisChange(result);
-    setIsAnalyzing(false);
+    try {
+      const result = await analyzeRawLogs(logs);
+      handleAnalysisChange(result);
+    } catch (e) {
+      console.error('Log analysis failed', e);
+      handleAnalysisChange('Analysis failed — the AI service is unavailable. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (

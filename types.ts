@@ -21,7 +21,6 @@ export interface Session {
   title: string;
   timestamp: number; // Unix timestamp
   messages: Message[];
-  embedding?: number[]; // Vector representation for RAG
 }
 
 export interface TriageStep {

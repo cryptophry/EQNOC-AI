@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateTroubleshootingFlow, checkAiHealth, StreamChunk, isAuthenticated as hasAuthToken, clearAuth, AuthError } from './services/ai';
+import { createChatSession, findRelevantHistory, generateShiftHandover, generateTroubleshootingFlow, checkAiHealth, StreamChunk, isAuthenticated as hasAuthToken, clearAuth, AuthError } from './services/ai';
 import { Message, MessageRole, TriageStatus, FlowNode, Session, ActivityItem } from './types';
 import { Send, Bot, User, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, Loader2, ScanSearch, Paperclip, X, ClipboardList, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import CommandPanel from './components/CommandPanel';
@@ -12,6 +12,8 @@ import ShiftHandoverDashboard from './components/ShiftHandoverDashboard';
 import ReminderModal, { Reminder } from './components/ReminderModal';
 import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
+import { playAlertSound } from './utils/audio';
+import { useResizablePanels } from './hooks/useResizablePanels';
 
 const App: React.FC = () => {
   // Authentication State — start authenticated if a stored token exists;
@@ -20,41 +22,16 @@ const App: React.FC = () => {
 
   const [triageStatus, setTriageStatus] = useState<TriageStatus>('pending');
   const [leftPanelMode, setLeftPanelMode] = useState<'DASHBOARD' | 'FAULT_ASSIST' | 'LOGS' | 'HANDOVER'>('DASHBOARD');
-  
-  // Resizable Panel State
-  const [leftPanelWidth, setLeftPanelWidth] = useState(() => {
-    try { const saved = localStorage.getItem('eqnoc_leftPanelWidth'); return saved ? parseFloat(saved) : 55; } catch { return 55; }
-  }); // Percentage
-  
-  // Dashboard Internal Resizing State
-  const [dashboardSplitV, setDashboardSplitV] = useState(() => {
-    try { const saved = localStorage.getItem('eqnoc_dashboardSplitV'); return saved ? parseFloat(saved) : 30; } catch { return 30; }
-  }); // % Height of Top Grid
-  const [dashboardSplitH, setDashboardSplitH] = useState(() => {
-    try { const saved = localStorage.getItem('eqnoc_dashboardSplitH'); return saved ? parseFloat(saved) : 60; } catch { return 60; }
-  }); // % Width of Left Tool
-  const [activeResizer, setActiveResizer] = useState<'MAIN' | 'DASH_V' | 'DASH_H' | null>(null);
-  
-  // Dashboard Section Visibility
-  const [isDiagnosticMinimized, setIsDiagnosticMinimized] = useState(() => {
-    try { return localStorage.getItem('eqnoc_isDiagnosticMinimized') === 'true'; } catch { return false; }
-  });
-  const [isCommandPanelMinimized, setIsCommandPanelMinimized] = useState(() => {
-    try { return localStorage.getItem('eqnoc_isCommandPanelMinimized') === 'true'; } catch { return false; }
-  });
 
-  // Persist layout state
-  useEffect(() => {
-    try {
-      localStorage.setItem('eqnoc_leftPanelWidth', leftPanelWidth.toString());
-      localStorage.setItem('eqnoc_dashboardSplitV', dashboardSplitV.toString());
-      localStorage.setItem('eqnoc_dashboardSplitH', dashboardSplitH.toString());
-      localStorage.setItem('eqnoc_isDiagnosticMinimized', isDiagnosticMinimized.toString());
-      localStorage.setItem('eqnoc_isCommandPanelMinimized', isCommandPanelMinimized.toString());
-    } catch (e) {
-      console.error('Failed to save layout state', e);
-    }
-  }, [leftPanelWidth, dashboardSplitV, dashboardSplitH, isDiagnosticMinimized, isCommandPanelMinimized]);
+  // Resizable panel layout (splits, minimized flags, persistence, drag handling)
+  const {
+    leftPanelWidth,
+    dashboardSplitV,
+    dashboardSplitH,
+    activeResizer, setActiveResizer,
+    isDiagnosticMinimized, setIsDiagnosticMinimized,
+    isCommandPanelMinimized, setIsCommandPanelMinimized,
+  } = useResizablePanels();
 
   // State for active diagnostic module (filtering commands)
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
@@ -75,6 +52,11 @@ const App: React.FC = () => {
     setNotes(newNotes);
     try { localStorage.setItem('eqnoc_notes', newNotes); } catch {}
   };
+
+  // Refs mirror the latest notes/sessions so async tool handlers read current
+  // values instead of the ones captured when processMessage was invoked.
+  const notesRef = useRef(notes);
+  useEffect(() => { notesRef.current = notes; }, [notes]);
 
   const [faultAssistantState, setFaultAssistantState] = useState<{input: string, tree: FlowNode | null}>({
     input: '',
@@ -178,7 +160,7 @@ const App: React.FC = () => {
   const activeAlarms = reminders.filter(r => r.fired);
 
   useEffect(() => {
-    localStorage.setItem('eqnoc_reminders', JSON.stringify(reminders));
+    try { localStorage.setItem('eqnoc_reminders', JSON.stringify(reminders)); } catch (e) { console.warn('Failed to save reminders', e); }
   }, [reminders]);
 
   useEffect(() => {
@@ -196,45 +178,7 @@ const App: React.FC = () => {
         if (changed) {
             setReminders(updated);
             setHasUnreadAlarm(true);
-            // Play Futuristic Alert Sound
-            try {
-                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                
-                const playPulse = (start: number, freq: number) => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    const filter = ctx.createBiquadFilter();
-
-                    // Sci-Fi Sawtooth texture
-                    osc.type = 'sawtooth';
-                    osc.frequency.setValueAtTime(freq, start);
-                    // Pitch drop (Laser effect)
-                    osc.frequency.exponentialRampToValueAtTime(freq * 0.5, start + 0.25);
-
-                    // Filter Sweep for "Futuristic" resonance
-                    filter.type = 'lowpass';
-                    filter.Q.value = 8; // High resonance
-                    filter.frequency.setValueAtTime(3000, start);
-                    filter.frequency.exponentialRampToValueAtTime(200, start + 0.25);
-
-                    osc.connect(filter);
-                    filter.connect(gain);
-                    gain.connect(ctx.destination);
-
-                    // Fast attack, exponential decay
-                    gain.gain.setValueAtTime(0.15, start);
-                    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25);
-
-                    osc.start(start);
-                    osc.stop(start + 0.3);
-                };
-
-                const t = ctx.currentTime;
-                // Double Pulse Pattern
-                playPulse(t, 1200);
-                playPulse(t + 0.15, 1200);
-
-            } catch(e) { /* silent fail if audio blocked */ }
+            playAlertSound();
         }
     }, 1000);
     return () => clearInterval(interval);
@@ -246,6 +190,8 @@ const App: React.FC = () => {
 
   // Session Management
   const [sessions, setSessions] = useState<Session[]>([]);
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const [currentSessionId, setCurrentSessionId] = useState<string>(() => Date.now().toString());
   
   // RAG State
@@ -295,12 +241,31 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Strip base64 images before persisting — a couple of pasted screenshots
+  // otherwise blow the ~5MB localStorage quota and silently kill ALL session
+  // saving. Images stay in memory for the current view; they're transient.
+  const persistSessions = (list: Session[]): boolean => {
+    const lean = list.map(s => ({
+      ...s,
+      messages: s.messages.map(m => (m.images ? { ...m, images: undefined } : m)),
+    }));
+    try {
+      localStorage.setItem('eqnoc_sessions', JSON.stringify(lean));
+      return true;
+    } catch (e) {
+      console.warn('Session save failed (storage quota?)', e);
+      return false;
+    }
+  };
+
+  const [sessionSaveFailed, setSessionSaveFailed] = useState(false);
+
   // Save Session logic
-  const saveCurrentSession = useCallback(async (msgs: Message[]) => {
+  const saveCurrentSession = useCallback((msgs: Message[]) => {
       if (msgs.length <= 1 && msgs[0]?.id === 'init') return;
 
       const firstUserMsg = msgs.slice().reverse().find(m => m.role === MessageRole.USER);
-      const title = firstUserMsg 
+      const title = firstUserMsg
         ? (firstUserMsg.text.length > 40 ? firstUserMsg.text.slice(0, 40) + '...' : firstUserMsg.text)
         : 'New Triage Session';
 
@@ -311,7 +276,6 @@ const App: React.FC = () => {
           title,
           timestamp: Date.now(),
           messages: msgs,
-          embedding: existingIdx >= 0 ? prev[existingIdx].embedding : undefined
         };
 
         let newSessions;
@@ -321,74 +285,10 @@ const App: React.FC = () => {
         } else {
             newSessions = [updatedSession, ...prev];
         }
-        try { localStorage.setItem('eqnoc_sessions', JSON.stringify(newSessions)); } catch {}
+        setSessionSaveFailed(!persistSessions(newSessions));
         return newSessions;
       });
   }, [currentSessionId]);
-
-  const generateSessionEmbedding = async (msgs: Message[]) => {
-      if (msgs.length < 3) return;
-      const summaryText = msgs
-          .filter(m => m.role !== 'system')
-          .map(m => `${m.role.toUpperCase()}: ${m.text}`)
-          .join('\n')
-          .substring(0, 8000);
-
-      const embedding = await embedText(summaryText);
-      if (embedding) {
-          setSessions(prev => {
-              const idx = prev.findIndex(s => s.id === currentSessionId);
-              if (idx === -1) return prev;
-              const updated = [...prev];
-              updated[idx] = { ...updated[idx], embedding };
-              try { localStorage.setItem('eqnoc_sessions', JSON.stringify(updated)); } catch {}
-              return updated;
-          });
-      }
-  };
-
-  const resize = useCallback((e: MouseEvent) => {
-    if (!activeResizer) return;
-    if (e.preventDefault) e.preventDefault();
-
-    if (activeResizer === 'MAIN') {
-      const newWidth = (e.clientX / window.innerWidth) * 100;
-      if (newWidth > 25 && newWidth < 75) {
-        setLeftPanelWidth(newWidth);
-      }
-    } else if (activeResizer === 'DASH_V') {
-        // Vertical split for dashboard
-        if (isDiagnosticMinimized) return; // Disable resize when minimized
-
-        const offsetTop = 117; // Header ~64px + Tabs ~53px
-        const containerHeight = window.innerHeight - offsetTop;
-        const relativeY = e.clientY - offsetTop;
-        const newH = (relativeY / containerHeight) * 100;
-        if (newH > 10 && newH < 90) setDashboardSplitV(newH);
-    } else if (activeResizer === 'DASH_H') {
-        // Horizontal split for tools
-        if (isCommandPanelMinimized) return; // Disable resize when minimized
-        const panelPx = (leftPanelWidth / 100) * window.innerWidth;
-        const availableW = panelPx - 48; // p-6 is 24px each side
-        const relativeX = e.clientX - 24;
-        const newW = (relativeX / availableW) * 100;
-        if (newW > 15 && newW < 85) setDashboardSplitH(newW);
-    }
-  }, [activeResizer, leftPanelWidth, isDiagnosticMinimized, isCommandPanelMinimized]);
-
-  const stopResizing = useCallback(() => {
-    setActiveResizer(null);
-    document.body.style.cursor = '';
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("mousemove", resize);
-    window.addEventListener("mouseup", stopResizing);
-    return () => {
-      window.removeEventListener("mousemove", resize);
-      window.removeEventListener("mouseup", stopResizing);
-    };
-  }, [resize, stopResizing]);
 
   // ONLINE indicator now reflects whether the /api/ai proxy is configured.
   const [isSystemOnline, setIsSystemOnline] = useState(false);
@@ -451,7 +351,7 @@ const App: React.FC = () => {
 
   const getSystemStateContext = () => {
     const shiftDiff = Math.max(0, Date.now() - shiftStartTime);
-    const shiftHours = Math.floor(shiftDiff / (1000 * 60 * 60));
+    const shiftHours = shiftStartTime === 0 ? 0 : Math.floor(shiftDiff / (1000 * 60 * 60));
     const activeIncidents: ActivityItem[] = [];
     Object.values(shiftState.smartCache).forEach((cache: any) => {
         if (cache.items) {
@@ -506,11 +406,12 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
 
     setInput('');
     setIsLoading(true);
-    
+
     requestAnimationFrame(() => {
         if (chatContainerRef.current) chatContainerRef.current.scrollTop = 0;
     });
 
+    let streamingMsgId: string | null = null;
     try {
       if (!chatSession.current) {
           chatSession.current = createChatSession();
@@ -543,6 +444,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       }
       
       const botMsgId = (Date.now() + 1).toString();
+      streamingMsgId = botMsgId;
       const botMsg: Message = {
         id: botMsgId,
         role: MessageRole.MODEL,
@@ -582,6 +484,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       // responses and every subsequent request is rejected by the API.
       let pendingCalls = functionCalls;
       let toolRounds = 0;
+      let workingNotes = notesRef.current;
       while (pendingCalls.length > 0 && toolRounds++ < 5) {
             const toolResponses = [];
 
@@ -612,7 +515,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                         toolResult = `Incident ${incidentId} status updated to ${action}.`;
                     }
                 } else if (fc.name === 'generate_shift_report') {
-                    const recentSessions = sessions.filter(s => s.timestamp >= shiftStartTime).sort((a, b) => b.timestamp - a.timestamp);
+                    const recentSessions = sessionsRef.current.filter(s => s.timestamp >= shiftStartTime).sort((a, b) => b.timestamp - a.timestamp);
                     if (recentSessions.length === 0) {
                         toolResult = "No active sessions in shift.";
                     } else {
@@ -706,19 +609,20 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                     toolResult = JSON.stringify(result);
                 } else if (fc.name === 'update_notes') {
                     const { content, mode = 'APPEND' } = args as any;
-                    let newNotes = notes;
+                    // Accumulate across repeated update_notes calls in one response
+                    // (workingNotes carries the running value; notesRef seeds it).
                     if (mode === 'OVERWRITE') {
-                        newNotes = content;
+                        workingNotes = content;
                     } else {
-                        newNotes = (notes + '\n' + content).trim();
+                        workingNotes = (workingNotes + '\n' + content).trim();
                     }
-                    handleNotesChange(newNotes);
-                    
+                    handleNotesChange(workingNotes);
+
                     // Switch view to Dashboard -> Notes so user sees it
                     setLeftPanelMode('DASHBOARD');
                     setNetworkToolTab('notes');
-                    
-                    toolResult = `Notes updated successfully. Current size: ${newNotes.length} chars.`;
+
+                    toolResult = `Notes updated successfully. Current size: ${workingNotes.length} chars.`;
                 }
 
                 const functionResponse: any = {
@@ -748,7 +652,6 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
       const completedMessages = [{ ...botMsg, text: fullText, isStreaming: false, groundingMetadata }, userMsg, ...messages];
       setMessages(completedMessages);
       saveCurrentSession(completedMessages);
-      generateSessionEmbedding(completedMessages);
 
     } catch (error: any) {
       // An expired/invalid token bounces the operator back to the login screen.
@@ -760,6 +663,10 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         return;
       }
       console.error("AI API Error:", error);
+      // Clear the stuck "streaming" indicator on any partial bot message.
+      if (streamingMsgId) {
+        setMessages(prev => prev.map(m => m.id === streamingMsgId ? { ...m, isStreaming: false } : m));
+      }
       setMessages(prev => [{
         id: Date.now().toString(),
         role: MessageRole.SYSTEM,
@@ -767,6 +674,8 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         timestamp: new Date()
       }, ...prev]);
       setIsRetrieving(false);
+      // A failed call may mean the proxy went down — re-check the ONLINE badge.
+      checkAiHealth().then(h => setIsSystemOnline(h.ok && h.configured)).catch(() => setIsSystemOnline(false));
     } finally {
       setIsLoading(false);
     }
@@ -819,7 +728,7 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         </div>
 
         <div className="flex-1 overflow-hidden relative flex flex-col">
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide flex flex-col">
+        <div ref={chatContainerRef} role="log" aria-live="polite" aria-label="Assistant conversation" aria-busy={isLoading} className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide flex flex-col">
             {messages.map((msg) => (
             <div key={msg.id} className={`flex gap-5 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''} animate-in fade-in duration-300 slide-in-from-bottom-2`}>
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${msg.role === MessageRole.USER ? 'bg-slate-800 border-slate-700' : 'bg-cyan-950/30 border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.1)]'}`}>
@@ -851,10 +760,10 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                  </div>
              )}
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-700/80 rounded-xl p-2.5 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/20 shadow-lg">
-                <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors" title="Upload Image"><Paperclip size={20} /></button>
+                <button onClick={() => fileInputRef.current?.click()} aria-label="Upload image" className="p-2.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800 transition-colors" title="Upload Image"><Paperclip size={20} /></button>
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
-                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} onPaste={handlePaste} placeholder="Type query..." disabled={isLoading} className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 text-base h-full" />
-                <button onClick={handleSendMessage} disabled={(!input.trim() && !attachment) || isLoading} className="p-2.5 text-cyan-400 hover:text-cyan-300 disabled:opacity-30 transition-colors"><Send size={20} /></button>
+                <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} onPaste={handlePaste} placeholder="Type query..." aria-label="Message the assistant" disabled={isLoading} className="flex-1 bg-transparent border-none outline-none text-slate-100 placeholder-slate-500 text-base h-full" />
+                <button onClick={handleSendMessage} aria-label="Send message" disabled={(!input.trim() && !attachment) || isLoading} className="p-2.5 text-cyan-400 hover:text-cyan-300 disabled:opacity-30 transition-colors"><Send size={20} /></button>
             </div>
             {isRetrieving && <div className="absolute top-0 right-4 -mt-3 text-[10px] text-indigo-400 flex items-center gap-1 font-mono"><Loader2 size={8} className="animate-spin" /> Recalling...</div>}
         </div>
@@ -884,9 +793,9 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
          <div className="bg-red-600 text-white text-xs font-bold font-mono py-1 overflow-hidden relative z-50 shadow-[0_0_20px_rgba(220,38,38,0.5)] border-b border-red-400/50">
             <div className="animate-marquee whitespace-nowrap flex gap-12 px-4 items-center cursor-pointer">
                {/* Loop active alarms to create ticker content */}
-               {activeAlarms.map((a, i) => (
-                  <div 
-                    key={i} 
+               {activeAlarms.map((a) => (
+                  <div
+                    key={a.id}
                     onClick={() => handleDismissAlarm(a.id)}
                     className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                     title="Click to dismiss"
@@ -898,9 +807,9 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                   </div>
                ))}
                {/* Duplicate for visual continuity if list is short */}
-               {activeAlarms.length < 3 && activeAlarms.map((a, i) => (
-                  <div 
-                    key={`dup-${i}`} 
+               {activeAlarms.length < 3 && activeAlarms.map((a) => (
+                  <div
+                    key={`dup-${a.id}`}
                     onClick={() => handleDismissAlarm(a.id)}
                     className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                     title="Click to dismiss"
@@ -913,6 +822,13 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                ))}
             </div>
          </div>
+      )}
+
+      {sessionSaveFailed && (
+        <div className="bg-amber-600/90 text-white text-[11px] font-mono font-bold py-1 px-4 z-50 flex items-center gap-2" role="alert">
+          <AlertTriangle size={12} className="shrink-0" />
+          Session history couldn't be saved (storage full). Older sessions may not persist — export anything important.
+        </div>
       )}
 
       <header className={`h-16 backdrop-blur-md border-b flex items-center justify-between px-6 z-20 sticky top-0 shrink-0 transition-colors duration-500 bg-slate-950/80 border-slate-800/50`}>
