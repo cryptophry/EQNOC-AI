@@ -55,9 +55,14 @@ async function retrieveManualContext(messages) {
   const good = (hits || []).filter((h) => (h.score ?? 0) >= RETRIEVE_MIN_SCORE && h.data);
   if (good.length === 0) return null;
   const excerpts = good
-    .map((h, i) => `[${i + 1}] (${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'})\n${h.data}`)
+    .map((h, i) => {
+      const src = h.metadata?.kind === 'photo'
+        ? `${h.metadata?.title || 'Site photo'} — site photo`
+        : `${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'}`;
+      return `[${i + 1}] (${src})\n${h.data}`;
+    })
     .join('\n\n');
-  return `RELEVANT EQUIPMENT MANUAL EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE them like (Title, p.X)):\n\n${excerpts}`;
+  return `RELEVANT EQUIPMENT MANUAL / SITE-PHOTO EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket, e.g. (Title, p.X) for manuals or (Title — site photo) for photos):\n\n${excerpts}`;
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';

@@ -7,6 +7,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import aiHandler from './api/ai.js';
 import loginHandler from './api/login.js';
 import manualsHandler from './api/manuals.js';
+import photosHandler from './api/photos.js';
 
 // Load .env.local into process.env (no dotenv dependency needed)
 if (existsSync('.env.local')) {
@@ -22,6 +23,7 @@ const routes = {
   '/api/ai': aiHandler,
   '/api/login': loginHandler,
   '/api/manuals': manualsHandler,
+  '/api/photos': photosHandler,
 };
 
 createServer(async (req, res) => {
