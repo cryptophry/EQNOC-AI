@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow, checkAiHealth, StreamChunk } from './services/ai';
+import { createChatSession, findRelevantHistory, embedText, generateShiftHandover, generateIncidentSummary, detectSessionIncidents, generateTroubleshootingFlow, checkAiHealth, StreamChunk, isAuthenticated as hasAuthToken, clearAuth, AuthError } from './services/ai';
 import { Message, MessageRole, TriageStatus, FlowNode, Session, ActivityItem } from './types';
 import { Mic, Send, Bot, User, Power, Activity, Wifi, LayoutDashboard, BrainCircuit, GitBranch, FileText, Loader2, ScanSearch, Clock, Paperclip, Image as ImageIcon, X, ClipboardList, Layers, Lightbulb, Terminal, Bell, AlertTriangle, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import CommandPanel from './components/CommandPanel';
@@ -14,8 +14,9 @@ import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
 
 const App: React.FC = () => {
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // Authentication State — start authenticated if a stored token exists;
+  // an expired/invalid token surfaces as a 401 on the first AI call and bounces back to login.
+  const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuthToken());
 
   const [triageStatus, setTriageStatus] = useState<TriageStatus>('pending');
   const [leftPanelMode, setLeftPanelMode] = useState<'DASHBOARD' | 'FAULT_ASSIST' | 'LOGS' | 'HANDOVER'>('DASHBOARD');
@@ -587,11 +588,16 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
         ));
       }
 
-      // Check for function calls accumulated during the stream
-      if (functionCalls.length > 0) {
+      // Process function calls — loop so chained tool calls (the model issuing
+      // another tool call in response to a tool result) are all handled. Without
+      // this loop the assistant's tool_calls turn is left without matching tool
+      // responses and every subsequent request is rejected by the API.
+      let pendingCalls = functionCalls;
+      let toolRounds = 0;
+      while (pendingCalls.length > 0 && toolRounds++ < 5) {
             const toolResponses = [];
-            
-            for (const fc of functionCalls) {
+
+            for (const fc of pendingCalls) {
                 const args = fc.args;
                 let toolResult: any = "Action failed";
 
@@ -737,23 +743,35 @@ ${logAnalysisResult ? `**LATEST X-RAY ANALYSIS FINDINGS (User can see this):**\n
                 toolResponses.push({ functionResponse });
             }
 
-            // Send tool responses to close turn sequence
+            // Send tool responses and read the follow-up stream, collecting any
+            // further tool calls to handle on the next loop iteration.
             const resStream = await chatSession.current.sendMessageStream({ message: toolResponses });
-            
+
+            const nextCalls: any[] = [];
             for await (const subChunk of resStream) {
                 const sc = subChunk as StreamChunk;
                 fullText += sc.text || '';
+                if (sc.functionCalls) sc.functionCalls.forEach(fc => nextCalls.push(fc));
                 setMessages(prev => prev.map(m => m.id === botMsgId ? { ...m, text: fullText } : m));
             }
+            pendingCalls = nextCalls;
       }
-      
+
       const completedMessages = [{ ...botMsg, text: fullText, isStreaming: false, groundingMetadata }, userMsg, ...messages];
       setMessages(completedMessages);
       saveCurrentSession(completedMessages);
       generateSessionEmbedding(completedMessages);
 
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
+      // An expired/invalid token bounces the operator back to the login screen.
+      if (error instanceof AuthError) {
+        clearAuth();
+        setIsAuthenticated(false);
+        setIsRetrieving(false);
+        setIsLoading(false);
+        return;
+      }
+      console.error("AI API Error:", error);
       setMessages(prev => [{
         id: Date.now().toString(),
         role: MessageRole.SYSTEM,

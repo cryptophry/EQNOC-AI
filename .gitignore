@@ -12,7 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Internal audit / security notes - do not publish to the repo
+# Internal audit / security notes — do not publish to the repo
 AUDIT.md
 
 # Editor directories and files

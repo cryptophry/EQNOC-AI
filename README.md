@@ -2,29 +2,33 @@
 
 AI-powered network triage assistant for EQNOC L2/L3 services with a Jarvis-style interface.
 
-AI calls are routed through **OpenRouter** via a serverless proxy (`api/ai.js`) so the API key never reaches the browser. The model is configurable via an environment variable.
+AI calls are routed through **OpenRouter** via serverless functions so the API key never reaches the browser. Access is gated by a server-side password: the login screen calls `/api/login`, which verifies the password and returns a short-lived signed token that the app sends on every AI request. The `/api/ai` proxy rejects any request without a valid token, fixes the model server-side, and clamps output size — so a leaked page can't be used to spend your OpenRouter credits.
 
 ## Environment variables
 
 | Variable | Required | Description |
 |---|---|---|
 | `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key (server-side only) |
+| `APP_PASSWORD` | Yes | Shared login password, verified server-side |
 | `OPENROUTER_MODEL` | No | Model slug, defaults to `anthropic/claude-sonnet-4.5` |
+| `AUTH_SECRET` | No | HMAC secret for signing auth tokens; falls back to `APP_PASSWORD`. Set a long random value in production. |
+
+See `.env.example` for a template.
 
 ## Run locally
 
 Prerequisites: Node.js 20+
 
 1. Install dependencies: `npm install`
-2. Create `.env.local` with `OPENROUTER_API_KEY=sk-or-...`
-3. Start the API proxy: `npm run dev:api`
+2. Copy `.env.example` to `.env.local` and set `OPENROUTER_API_KEY` and `APP_PASSWORD`
+3. Start the API server: `npm run dev:api`
 4. In another terminal, start the app: `npm run dev`
-5. Open http://localhost:3000
+5. Open http://localhost:3000 and log in with `APP_PASSWORD`
 
 ## Deploy (Vercel)
 
 1. Import the GitHub repo into Vercel (framework preset: Vite — auto-detected).
-2. Add `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) in Project → Settings → Environment Variables.
+2. Add `OPENROUTER_API_KEY`, `APP_PASSWORD` (and optionally `OPENROUTER_MODEL`, `AUTH_SECRET`) in Project → Settings → Environment Variables.
 3. Deploy. The `api/` directory is picked up automatically as serverless functions.
 
 ## Notes

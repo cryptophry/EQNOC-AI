@@ -7,6 +7,55 @@ import { Session, Message, CommandRef, FlowNode } from "../types";
 import { EQNOC_KNOWLEDGE_BASE } from "../constants";
 
 const API_URL = '/api/ai';
+const LOGIN_URL = '/api/login';
+const TOKEN_KEY = 'eqnoc_auth_token';
+
+// --- Auth token handling ---
+// The token is issued by /api/login after a server-side password check and sent
+// as a Bearer header on every AI request. It's kept in memory and mirrored to
+// localStorage so a page reload doesn't force re-login.
+
+let authToken: string | null = null;
+try { authToken = localStorage.getItem(TOKEN_KEY); } catch {}
+
+export class AuthError extends Error {
+  constructor(message = 'Unauthorized') {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+export function isAuthenticated(): boolean {
+  return !!authToken;
+}
+
+export function clearAuth(): void {
+  authToken = null;
+  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+}
+
+// Verify a password against the server and store the returned token.
+export async function login(password: string): Promise<void> {
+  const res = await fetch(LOGIN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (res.status === 401) throw new AuthError('Invalid credentials');
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json()).error || ''; } catch {}
+    throw new Error(detail || `Login failed (${res.status})`);
+  }
+  const data = await res.json();
+  if (!data.token) throw new Error('Login response missing token');
+  authToken = data.token;
+  try { localStorage.setItem(TOKEN_KEY, data.token); } catch {}
+}
 
 // --- Types (unchanged from the Gemini version) ---
 
@@ -74,14 +123,29 @@ export interface StreamChunk {
 // --- Low-level helpers ---
 
 async function callApi(body: any): Promise<Response> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    clearAuth();
+    throw new AuthError('Session expired. Please sign in again.');
+  }
   if (!res.ok) {
     let detail = '';
-    try { detail = (await res.json()).error?.message || (await res.text()); } catch {}
+    try {
+      const text = await res.text();
+      try {
+        const j = JSON.parse(text);
+        detail = j?.error?.message || j?.error || text;
+      } catch {
+        detail = text;
+      }
+    } catch {}
     throw new Error(`AI proxy error ${res.status}${detail ? `: ${detail}` : ''}`);
   }
   return res;

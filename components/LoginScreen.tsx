@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, ShieldCheck, Activity, ChevronRight, AlertCircle, Scan, Cpu, Power, Fingerprint, Globe, Radio, Zap, Terminal } from 'lucide-react';
+import { login, AuthError } from '../services/ai';
 
 interface Props {
   onLogin: () => void;
@@ -8,6 +9,7 @@ interface Props {
 const LoginScreen: React.FC<Props> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('AUTHENTICATION FAILED');
   const [isLoading, setIsLoading] = useState(false);
   const [bootLines, setBootLines] = useState<string[]>([]);
   const [isBooting, setIsBooting] = useState(true);
@@ -42,22 +44,21 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
     });
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(false);
 
-    // Simulate network latency & auth check
-    setTimeout(() => {
-      if (password.toLowerCase() === 'eqnoc' || password.toLowerCase() === 'admin') {
-        onLogin();
-      } else {
-        setError(true);
-        setIsLoading(false);
-        setPassword('');
-        // Shake effect or red flash could be added here
-      }
-    }, 1200);
+    try {
+      // Server-side password check; on success we hold a short-lived token.
+      await login(password);
+      onLogin();
+    } catch (err) {
+      setError(true);
+      setErrorMsg(err instanceof AuthError ? 'AUTHENTICATION FAILED' : 'CONNECTION ERROR');
+      setIsLoading(false);
+      setPassword('');
+    }
   };
 
   return (
@@ -176,7 +177,7 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
 
                   {error && (
                      <div className="text-center text-[10px] font-bold text-red-400 animate-pulse flex items-center justify-center gap-2">
-                        <AlertCircle size={12} /> AUTHENTICATION FAILED
+                        <AlertCircle size={12} /> {errorMsg}
                      </div>
                   )}
 
