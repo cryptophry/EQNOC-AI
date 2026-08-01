@@ -38,8 +38,8 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
           <Activity size={34} className="text-white" strokeWidth={2.2} />
         </div>
 
-        <h1 className="text-[22px] font-extrabold tracking-[-0.3px] mb-1">NOC Assistant</h1>
-        <p className="text-muted text-[13px] mb-6">Network operations triage</p>
+        <h1 className="text-[22px] font-extrabold tracking-[-0.3px] mb-1">EQNOC Assistant</h1>
+        <p className="text-muted text-[13px] mb-6">Network &amp; field telecom assistant</p>
 
         <form onSubmit={handleLogin} className="flex flex-col gap-3">
           <input
@@ -69,7 +69,7 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
           </div>
         </form>
 
-        <p className="mt-2 text-faint text-[12px]">Authorised NOC staff only</p>
+        <p className="mt-2 text-faint text-[12px]">Authorised EQNOC staff only</p>
       </main>
 
       <style>{`@keyframes card-in { from { opacity: 0; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }`}</style>

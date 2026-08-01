@@ -23,9 +23,9 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['apple-touch-icon.png'],
         manifest: {
-          name: 'NOC Assistant',
-          short_name: 'NOC',
-          description: 'AI-powered network operations triage for EQNOC.',
+          name: 'EQNOC Assistant',
+          short_name: 'EQNOC',
+          description: 'AI assistant for EQNOC network operations and field telecom crews.',
           start_url: '/',
           scope: '/',
           display: 'standalone',

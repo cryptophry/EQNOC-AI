@@ -1,6 +1,6 @@
-# NOC Assistant (EQNOC-AI)
+# EQNOC Assistant (EQNOC-AI)
 
-AI-powered network triage assistant for EQNOC L2/L3 services with a Jarvis-style interface.
+AI assistant for EQNOC network operations (NOC) and field telecommunications crews — chat-first triage, test-result interpretation, equipment & standards reference, safety guidance, and field/shift reporting. Installable PWA, light + dark.
 
 AI calls are routed through **OpenRouter** via serverless functions so the API key never reaches the browser. Access is gated by a server-side password: the login screen calls `/api/login`, which verifies the password and returns a short-lived signed token that the app sends on every AI request. The `/api/ai` proxy rejects any request without a valid token, fixes the model server-side, and clamps output size — so a leaked page can't be used to spend your OpenRouter credits.
 

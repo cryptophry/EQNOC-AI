@@ -1,5 +1,5 @@
 {
-  "name": "NOC Assistant",
-  "description": "Interactive AI-powered network triage assistant for EQNOC L2/L3 services, featuring a futuristic Jarvis-like interface.",
+  "name": "EQNOC Assistant",
+  "description": "AI assistant for EQNOC network operations (NOC) and field telecommunications crews — triage, test-result interpretation, equipment & standards, safety, and reporting.",
   "requestFramePermissions": []
 }

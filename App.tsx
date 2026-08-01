@@ -15,9 +15,11 @@ import ReminderModal, { Reminder } from './components/ReminderModal';
 import { playAlertSound } from './utils/audio';
 
 const SUGGESTIONS = [
+  'Interpret an OTDR or power reading',
+  'Fibre colour code & connector guide',
+  'Safety check for a site job',
+  'Draft a job or defect report',
   'Generate my shift handover',
-  'Calculate an optical budget',
-  'Draft a ticket from this session',
   'Explain a Cisco vs Juniper command',
 ];
 
@@ -26,7 +28,7 @@ const App: React.FC = () => {
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([
-    { id: 'init', role: MessageRole.MODEL, text: "NOC Assistant ready. What are you working on?", timestamp: new Date() },
+    { id: 'init', role: MessageRole.MODEL, text: "EQNOC Assistant ready — desk or field, what are you working on?", timestamp: new Date() },
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -341,7 +343,7 @@ const App: React.FC = () => {
         <div className="w-8 h-8 rounded-[10px] grid place-items-center shrink-0" style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
           <Activity size={17} className="text-white" strokeWidth={2.2} />
         </div>
-        <div className="font-bold text-[16px] tracking-[-0.3px]">NOC <span className="text-accent">Assistant</span></div>
+        <div className="font-bold text-[16px] tracking-[-0.3px]">EQNOC <span className="text-accent">Assistant</span></div>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => { setIsReminderOpen(true); setHasUnreadAlarm(false); }} className="relative w-9 h-9 grid place-items-center rounded-full border border-line bg-card hover:border-line-strong" aria-label="Reminders">
             <Bell size={16} className="text-muted" />
