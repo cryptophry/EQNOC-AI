@@ -15,6 +15,7 @@ import CommandLibraryModal from './components/CommandLibraryModal';
 const ManualsModal = lazy(() => import('./components/ManualsModal'));
 const PhotosModal = lazy(() => import('./components/PhotosModal'));
 import ReminderModal, { Reminder } from './components/ReminderModal';
+import { ingestPhotoFromDataUrl } from './services/photos';
 import { playAlertSound } from './utils/audio';
 
 const SUGGESTIONS = [
@@ -36,6 +37,8 @@ const App: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [attachment, setAttachment] = useState<{ base64: string; type: string } | null>(null);
+  const [rememberImage, setRememberImage] = useState(false);
+  const [imgSaveNote, setImgSaveNote] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatSession = useRef<ReturnType<typeof createChatSession> | null>(null);
   const streamRef = useRef<HTMLDivElement>(null);
@@ -203,7 +206,19 @@ const App: React.FC = () => {
     if ((!text.trim() && !attachment) || isLoading) return;
 
     const currentAttachment = attachment;
+    const rememberThis = rememberImage;
     setAttachment(null);
+    setRememberImage(false);
+
+    // Paste-to-remember: if the tech opted in, save the image to the Reference
+    // images store (using their message as the caption) so it's queryable later.
+    if (currentAttachment && rememberThis) {
+      setImgSaveNote('Saving to Reference images…');
+      ingestPhotoFromDataUrl(currentAttachment.base64, text.trim() || undefined)
+        .then(() => setImgSaveNote('Saved to Reference images ✓'))
+        .catch((err) => setImgSaveNote(`Couldn't save image: ${(err as Error).message}`))
+        .finally(() => setTimeout(() => setImgSaveNote(null), 4000));
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(), role: MessageRole.USER, text, timestamp: new Date(),
@@ -396,10 +411,19 @@ const App: React.FC = () => {
           {/* Composer */}
           <div className="p-3 sm:p-4 border-t border-line">
             {attachment && (
-              <div className="flex items-center gap-2 mb-2 text-[12px] text-muted">
+              <div className="flex items-center gap-2 mb-2 text-[12px] text-muted flex-wrap">
                 <img src={attachment.base64} alt="" className="w-9 h-9 rounded-md object-cover border border-line" />
                 Image attached
-                <button onClick={() => setAttachment(null)} className="text-faint hover:text-danger" aria-label="Remove attachment"><X size={14} /></button>
+                <button onClick={() => { setAttachment(null); setRememberImage(false); }} className="text-faint hover:text-danger" aria-label="Remove attachment"><X size={14} /></button>
+                <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none hover:text-ink transition-colors" title="Save this image to Reference images so you can ask about it in future chats">
+                  <input type="checkbox" checked={rememberImage} onChange={e => setRememberImage(e.target.checked)} className="w-3.5 h-3.5 accent-[var(--accent)] cursor-pointer" />
+                  <ImageIcon size={13} /> Remember this image
+                </label>
+              </div>
+            )}
+            {imgSaveNote && (
+              <div className="mb-2 text-[12px] text-muted flex items-center gap-1.5">
+                <ImageIcon size={13} className="text-accent" /> {imgSaveNote}
               </div>
             )}
             <div className="flex items-center gap-2 bg-card-2 border border-line-strong rounded-2xl pl-3 pr-2 py-1.5 focus-ring transition-shadow">
