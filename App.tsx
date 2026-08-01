@@ -367,13 +367,13 @@ const App: React.FC = () => {
         <section className="bg-card border border-line rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
           <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 scrollbar-hide">
             {messages.map(msg => (
-              <div key={msg.id} className={`flex gap-3 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-8 h-8 rounded-[9px] shrink-0 grid place-items-center text-[13px] font-semibold ${
+              <div key={msg.id} className={`flex gap-2 sm:gap-3 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-[9px] shrink-0 grid place-items-center text-[11px] sm:text-[13px] font-semibold ${
                   msg.role === MessageRole.USER ? 'bg-card-2 text-muted' : msg.role === MessageRole.SYSTEM ? 'bg-danger/15 text-danger' : 'text-accent'
                 }`} style={msg.role === MessageRole.MODEL ? { background: 'color-mix(in srgb, var(--accent) 14%, transparent)' } : {}}>
                   {msg.role === MessageRole.USER ? 'You' : msg.role === MessageRole.SYSTEM ? '!' : '◆'}
                 </div>
-                <div className={`max-w-[86%] rounded-2xl px-4 py-3 text-[14.5px] leading-relaxed ${
+                <div className={`max-w-[88%] sm:max-w-[86%] rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13px] sm:text-[14.5px] leading-relaxed ${
                   msg.role === MessageRole.USER ? 'text-white' : 'bg-card-2 border border-line'
                 }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(155deg, var(--accent-2), var(--accent))' } : {}}>
                   {msg.role === MessageRole.USER

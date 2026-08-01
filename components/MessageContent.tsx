@@ -34,7 +34,7 @@ const CodeBlock: React.FC<{ content: string; language?: string }> = ({ content, 
         </button>
       </div>
       <div className="p-4 overflow-x-auto">
-        <pre className="font-mono text-sm text-code-ink whitespace-pre leading-relaxed">
+        <pre className="font-mono text-[12px] sm:text-sm text-code-ink whitespace-pre leading-relaxed">
           <code>{cleanContent}</code>
         </pre>
       </div>
@@ -226,16 +226,16 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
     <div className="space-y-4 text-ink">
       {blocks.map((b, idx) => {
         if (b.type === 'h') {
-          const size = b.level === 1 ? 'text-2xl font-bold text-accent border-b border-line pb-2 mt-6 mb-4' : 
-                       b.level === 2 ? 'text-xl font-bold text-accent mt-5 mb-3' : 
-                       'text-lg font-bold text-ink mt-4 mb-2';
+          const size = b.level === 1 ? 'text-lg sm:text-2xl font-bold text-accent border-b border-line pb-2 mt-5 mb-3 sm:mt-6 sm:mb-4' :
+                       b.level === 2 ? 'text-base sm:text-xl font-bold text-accent mt-4 mb-2 sm:mt-5 sm:mb-3' :
+                       'text-[15px] sm:text-lg font-bold text-ink mt-3 mb-2 sm:mt-4';
           return <div key={idx} className={`${size} tracking-wide uppercase`}>{parseInline(b.content || "")}</div>;
         }
         if (b.type === 'li') {
           return (
             <ul key={idx} className="space-y-2 my-3">
               {b.items?.map((item, i) => (
-                <li key={i} className={`flex gap-3 text-base leading-7 ${item.customLabel ? 'bg-card-2 p-3 rounded-lg border border-line hover:border-line transition-colors' : ''}`} style={{ paddingLeft: item.customLabel ? '0.75rem' : `${item.level * 1.5}em` }}>
+                <li key={i} className={`flex gap-3 text-[13.5px] leading-6 sm:text-base sm:leading-7 ${item.customLabel ? 'bg-card-2 p-3 rounded-lg border border-line hover:border-line transition-colors' : ''}`} style={{ paddingLeft: item.customLabel ? '0.75rem' : `${item.level * 1.5}em` }}>
                   {item.customLabel ? (
                      <span className="shrink-0 font-mono font-bold text-xs bg-card-2 text-accent border border-line rounded px-2 py-1 h-fit ">
                        {item.customLabel}
@@ -252,14 +252,14 @@ const FormattedText: React.FC<{ text: string }> = ({ text }) => {
         if (b.type === 'table') {
            return (
              <div key={idx} className="my-4 overflow-x-auto rounded-lg border border-line bg-card-2 shadow-md">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-left text-[12.5px] sm:text-sm">
                    {b.headers?.length && <thead className="bg-card-2 text-muted font-bold uppercase tracking-wider"><tr>{b.headers.map((h,i)=><th key={i} className="px-4 py-3 border-b border-line">{parseInline(h)}</th>)}</tr></thead>}
                    <tbody>{b.rows?.map((r,i)=><tr key={i} className="border-b border-line last:border-0 hover:bg-white/5 transition-colors">{r.cells.map((c,j)=><td key={j} className="px-4 py-3 border-r border-line last:border-0 whitespace-pre-wrap">{parseInline(c)}</td>)}</tr>)}</tbody>
                 </table>
              </div>
            );
         }
-        return <p key={idx} className="text-base leading-7 text-ink">{parseInline(b.content || "")}</p>;
+        return <p key={idx} className="text-[13.5px] leading-6 sm:text-base sm:leading-7 text-ink">{parseInline(b.content || "")}</p>;
       })}
     </div>
   );
