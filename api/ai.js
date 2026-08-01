@@ -8,19 +8,32 @@
 //   - Aborts the upstream request on timeout or client disconnect
 //   - Best-effort per-IP rate limiting
 //
+// Model routing: a cheap text-only model handles ordinary chat, but if a
+// request contains a pasted image the proxy automatically upgrades that turn to
+// a vision-capable model — so photo/screenshot analysis works without paying
+// vision prices on every text message.
+//
 // Env vars:
-//   OPENROUTER_API_KEY - required
-//   OPENROUTER_MODEL   - optional, defaults to deepseek/deepseek-v4-flash-0731
-//                        (note: DeepSeek is text-only — image/photo paste needs a
-//                        vision model, e.g. anthropic/claude-haiku-4.5 or google/gemini-2.5-flash)
-//   APP_PASSWORD       - required (used to sign/verify auth tokens; see lib/auth.js)
-//   AUTH_SECRET        - optional, HMAC signing secret (falls back to APP_PASSWORD)
+//   OPENROUTER_API_KEY    - required
+//   OPENROUTER_MODEL      - optional text model, defaults to deepseek/deepseek-v4-flash-0731
+//   OPENROUTER_VISION_MODEL - optional model used only when an image is present,
+//                             defaults to anthropic/claude-haiku-4.5
+//   APP_PASSWORD          - required (used to sign/verify auth tokens; see lib/auth.js)
+//   AUTH_SECRET           - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
 import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash-0731';
+const DEFAULT_VISION_MODEL = 'anthropic/claude-haiku-4.5';
+
+// True if any message carries image content (OpenAI-format image_url parts).
+function hasImageContent(messages) {
+  return Array.isArray(messages) && messages.some(
+    (m) => Array.isArray(m?.content) && m.content.some((p) => p?.type === 'image_url')
+  );
+}
 
 // Guardrails
 const MAX_OUTPUT_TOKENS = 8000;    // server ceiling for max_tokens
@@ -30,7 +43,8 @@ const UPSTREAM_TIMEOUT_MS = 90_000;
 
 export default async function handler(req, res) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  const textModel = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
+  const visionModel = process.env.OPENROUTER_VISION_MODEL || DEFAULT_VISION_MODEL;
 
   // Health check used by the UI's ONLINE/OFFLINE indicator (public, no secrets).
   if (req.method === 'GET') {
@@ -89,9 +103,13 @@ export default async function handler(req, res) {
     messages = [{ role: 'system', content: EQNOC_KNOWLEDGE_BASE }, ...messages];
   }
 
+  // --- Pick the model server-side: upgrade to the vision model only when the
+  // request actually contains an image (clients never choose the model). ---
+  const model = hasImageContent(body.messages) ? visionModel : textModel;
+
   // --- Build payload: model is server-controlled, max_tokens clamped ---
   const payload = {
-    model, // deliberately ignore body.model — clients cannot pick the model
+    model,
     messages,
     stream: !!body.stream,
   };
