@@ -83,10 +83,11 @@ export default async function handler(req, res) {
       const { action } = body || {};
 
       if (action === 'start') {
-        const { manualId, title, total, addedBy, unit } = body;
+        const { manualId, title, total, addedBy, unit, category } = body;
         if (!manualId || !title) { res.status(400).json({ error: 'manualId and title required' }); return; }
+        const cat = String(category || 'other').trim().toLowerCase().slice(0, 30) || 'other';
         const manuals = (await getManuals()).filter((m) => m.id !== manualId);
-        manuals.unshift({ id: manualId, title, pages: total || 0, chunks: 0, status: 'processing', type: unit === 'section' ? 'docx' : 'pdf', addedBy: addedBy || null, addedAt: new Date().toISOString() });
+        manuals.unshift({ id: manualId, title, pages: total || 0, chunks: 0, status: 'processing', type: unit === 'section' ? 'docx' : 'pdf', category: cat, addedBy: addedBy || null, addedAt: new Date().toISOString() });
         await saveManuals(manuals);
         res.status(200).json({ ok: true });
         return;
@@ -129,15 +130,19 @@ export default async function handler(req, res) {
       }
 
       if (action === 'rename') {
-        const { manualId, title } = body;
-        const clean = String(title || '').trim().slice(0, 120);
-        if (!manualId || !clean) { res.status(400).json({ error: 'manualId and title required' }); return; }
+        const { manualId, title, category } = body;
+        const cleanTitle = title !== undefined ? String(title || '').trim().slice(0, 120) : undefined;
+        const cleanCat = category !== undefined ? (String(category || '').trim().toLowerCase().slice(0, 30) || 'other') : undefined;
+        if (!manualId || (cleanTitle === undefined && cleanCat === undefined) || cleanTitle === '') {
+          res.status(400).json({ error: 'manualId and a title or category required' }); return;
+        }
         const manuals = await getManuals();
         const m = manuals.find((x) => x.id === manualId);
         if (!m) { res.status(404).json({ error: 'Not found' }); return; }
-        m.title = clean;
+        if (cleanTitle !== undefined) m.title = cleanTitle;
+        if (cleanCat !== undefined) m.category = cleanCat;
         await saveManuals(manuals);
-        res.status(200).json({ ok: true, title: clean });
+        res.status(200).json({ ok: true, title: m.title, category: m.category || 'other' });
         return;
       }
 

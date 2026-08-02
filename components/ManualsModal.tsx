@@ -1,7 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check, Download, Search, WifiOff } from 'lucide-react';
-import { listManuals, deleteManual, renameManual, downloadManualForOffline, ManualRecord, IngestProgress, ingestManual } from '../services/manuals';
+import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check, Download, Search, WifiOff, ShieldCheck, ClipboardList, Gauge } from 'lucide-react';
+import { listManuals, deleteManual, renameManual, downloadManualForOffline, ManualRecord, IngestProgress, ingestManual, CATEGORIES, categoryLabel } from '../services/manuals';
 import { getOfflineIds, listOfflineManuals, removeOfflineManual, searchOffline, OfflineHit } from '../utils/offlineLibrary';
+
+const CAT_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  equipment: BookText,
+  safety: ShieldCheck,
+  procedures: ClipboardList,
+  testing: Gauge,
+  other: FileText,
+};
+
+const CatIcon: React.FC<{ cat?: string; size?: number; className?: string }> = ({ cat, size = 14, className }) => {
+  const Icon = CAT_ICONS[cat || 'other'] || FileText;
+  return <Icon size={size} className={className} />;
+};
+
+const normCat = (c?: string) => (CATEGORIES.some((x) => x.key === c) ? (c as string) : 'other');
 
 interface Props {
   onClose: () => void;
@@ -22,6 +37,20 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<OfflineHit[]>([]);
 
+  // Categories
+  const [uploadCategory, setUploadCategory] = useState('equipment');
+  const [catFilter, setCatFilter] = useState('');
+  const [catEditId, setCatEditId] = useState<string | null>(null);
+
+  const setCategory = async (m: ManualRecord, key: string) => {
+    setCatEditId(null);
+    if (key === normCat(m.category)) return;
+    const prev = manuals;
+    setManuals((list) => list.map((x) => (x.id === m.id ? { ...x, category: key } : x))); // optimistic
+    try { await renameManual(m.id, undefined, key); }
+    catch (e) { setManuals(prev); setError((e as Error).message); }
+  };
+
   const refresh = async () => {
     setLoading(true);
     try {
@@ -32,7 +61,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
       // No network (or server error): fall back to the device's offline copies.
       const saved = await listOfflineManuals();
       if (saved.length > 0) {
-        setManuals(saved.map((s) => ({ id: s.id, title: s.title, pages: s.pages, chunks: 0, status: 'ready', type: s.type })));
+        setManuals(saved.map((s) => ({ id: s.id, title: s.title, pages: s.pages, chunks: 0, status: 'ready', type: s.type, category: s.category })));
         setOfflineMode(true);
         setError('');
       } else {
@@ -81,7 +110,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
     setUploadingName(file.name);
     setProgress({ page: 0, total: 0, ocr: false });
     try {
-      await ingestManual(file, (p) => setProgress(p));
+      await ingestManual(file, (p) => setProgress(p), uploadCategory);
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -122,6 +151,22 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
 
         {/* Upload */}
         <div className="p-4 border-b border-line">
+          {/* Category for the next upload */}
+          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto scrollbar-hide">
+            <span className="text-[11px] text-faint shrink-0 mr-0.5">File under</span>
+            {CATEGORIES.map((c) => (
+              <button
+                key={c.key}
+                onClick={() => setUploadCategory(c.key)}
+                disabled={!!progress}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
+                  uploadCategory === c.key ? 'border-accent text-accent bg-code-bg' : 'border-line text-muted hover:text-ink'
+                }`}
+              >
+                <CatIcon cat={c.key} size={11} /> {c.label}
+              </button>
+            ))}
+          </div>
           <input ref={fileRef} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleFile} />
           <button
             onClick={() => fileRef.current?.click()}
@@ -193,52 +238,116 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
             <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
               <FileText size={30} /><p className="text-[13px]">No manuals or guides yet — upload one to make it searchable.</p>
             </div>
-          ) : manuals.map((m) => (
-            <div key={m.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-center gap-3">
-              <FileText size={18} className="text-muted shrink-0" />
-              <div className="flex-1 min-w-0">
-                {editingId === m.id ? (
-                  <input
-                    autoFocus
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
-                    onBlur={saveEdit}
-                    className="w-full text-[14.5px] font-semibold bg-card border border-accent rounded-md px-2 py-1 outline-none"
-                    aria-label="New name"
-                  />
-                ) : (
-                  <div className="text-[14.5px] font-semibold truncate">{m.title}</div>
-                )}
-                <div className="text-[12px] text-muted flex items-center gap-2">
-                  <span>{m.type === 'docx' ? `Guide · ${m.chunks} sections` : `${m.pages} pages · ${m.chunks} sections`}</span>
-                  {m.status === 'ready'
-                    ? <span className="inline-flex items-center gap-1 text-ok"><CheckCircle2 size={12} /> ready</span>
-                    : <span className="text-warn">{m.status}</span>}
-                  {offlineIds.has(m.id) && <span className="inline-flex items-center gap-1 text-accent"><Download size={11} /> offline</span>}
-                </div>
-              </div>
-              {dl?.id === m.id ? (
-                <span className="p-2 shrink-0 flex items-center gap-1 text-[11px] text-accent"><Loader2 size={14} className="animate-spin" />{dl.fetched > 0 ? dl.fetched : ''}</span>
-              ) : (
-                <button
-                  onClick={() => toggleOffline(m)}
-                  disabled={offlineMode}
-                  className={`p-2 shrink-0 transition-colors disabled:opacity-40 ${offlineIds.has(m.id) ? 'text-accent hover:text-danger' : 'text-faint hover:text-accent'}`}
-                  aria-label={offlineIds.has(m.id) ? 'Remove offline copy' : 'Keep offline'}
-                  title={offlineIds.has(m.id) ? 'Available offline — tap to remove' : 'Keep offline'}
-                >
-                  {offlineIds.has(m.id) ? <CheckCircle2 size={16} /> : <Download size={16} />}
-                </button>
-              )}
-              {editingId === m.id ? (
-                <button onMouseDown={(e) => { e.preventDefault(); saveEdit(); }} className="p-2 text-accent shrink-0" aria-label="Save name"><Check size={16} /></button>
-              ) : (
-                <button onClick={() => startEdit(m)} disabled={offlineMode} className="p-2 text-faint hover:text-accent shrink-0 disabled:opacity-40" aria-label="Rename"><Pencil size={15} /></button>
-              )}
-              <button onClick={() => handleDelete(m)} disabled={offlineMode} className="p-2 text-faint hover:text-danger shrink-0 disabled:opacity-40" aria-label="Delete manual"><Trash2 size={16} /></button>
-            </div>
-          ))}
+          ) : (
+            <>
+              {/* Category filter — instant inventory of what's uploaded */}
+              {(() => {
+                const counts = manuals.reduce<Record<string, number>>((acc, m) => {
+                  const k = normCat(m.category); acc[k] = (acc[k] || 0) + 1; return acc;
+                }, {});
+                const present = CATEGORIES.filter((c) => counts[c.key]);
+                if (present.length < 2) return null;
+                return (
+                  <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+                    <button onClick={() => setCatFilter('')} className={`px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${!catFilter ? 'border-accent text-accent bg-code-bg' : 'border-line text-muted hover:text-ink'}`}>
+                      All · {manuals.length}
+                    </button>
+                    {present.map((c) => (
+                      <button key={c.key} onClick={() => setCatFilter(catFilter === c.key ? '' : c.key)} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${catFilter === c.key ? 'border-accent text-accent bg-code-bg' : 'border-line text-muted hover:text-ink'}`}>
+                        <CatIcon cat={c.key} size={11} /> {c.label} · {counts[c.key]}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Grouped by category, A→Z within each group */}
+              {CATEGORIES.filter((c) => !catFilter || c.key === catFilter).map((c) => {
+                const items = manuals
+                  .filter((m) => normCat(m.category) === c.key)
+                  .sort((a, b) => a.title.localeCompare(b.title));
+                if (items.length === 0) return null;
+                return (
+                  <div key={c.key}>
+                    <div className="flex items-center gap-2 px-1 pt-3 pb-1.5">
+                      <CatIcon cat={c.key} size={13} className="text-accent" />
+                      <span className="text-[11.5px] font-semibold uppercase tracking-[0.5px] text-muted">{c.label}</span>
+                      <span className="text-[11px] text-faint">{items.length}</span>
+                      <div className="flex-1 h-px bg-line ml-1" style={{ background: 'var(--line)' }} />
+                    </div>
+                    <div className="space-y-2">
+                      {items.map((m) => (
+                        <div key={m.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-center gap-3">
+                          <CatIcon cat={c.key} size={18} className="text-muted shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            {editingId === m.id ? (
+                              <input
+                                autoFocus
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                                onBlur={saveEdit}
+                                className="w-full text-[14.5px] font-semibold bg-card border border-accent rounded-md px-2 py-1 outline-none"
+                                aria-label="New name"
+                              />
+                            ) : (
+                              <div className="text-[14.5px] font-semibold truncate">{m.title}</div>
+                            )}
+                            <div className="text-[12px] text-muted flex items-center gap-2 flex-wrap">
+                              {catEditId === m.id ? (
+                                <select
+                                  autoFocus
+                                  defaultValue={normCat(m.category)}
+                                  onChange={(e) => setCategory(m, e.target.value)}
+                                  onBlur={() => setCatEditId(null)}
+                                  className="text-[11.5px] bg-card border border-accent rounded-md px-1 py-0.5 outline-none text-ink"
+                                  aria-label="Category"
+                                >
+                                  {CATEGORIES.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                                </select>
+                              ) : (
+                                <button
+                                  onClick={() => !offlineMode && setCatEditId(m.id)}
+                                  className="inline-flex items-center gap-1 text-[11px] text-accent bg-code-bg border border-line rounded-full px-2 py-[1px] hover:border-accent transition-colors"
+                                  title="Change category"
+                                >
+                                  <CatIcon cat={normCat(m.category)} size={10} /> {categoryLabel(m.category)}
+                                </button>
+                              )}
+                              <span>{m.type === 'docx' ? `Guide · ${m.chunks} sections` : `${m.pages} pages · ${m.chunks} sections`}</span>
+                              {m.status === 'ready'
+                                ? <span className="inline-flex items-center gap-1 text-ok"><CheckCircle2 size={12} /> ready</span>
+                                : <span className="text-warn">{m.status}</span>}
+                              {offlineIds.has(m.id) && <span className="inline-flex items-center gap-1 text-accent"><Download size={11} /> offline</span>}
+                            </div>
+                          </div>
+                          {dl?.id === m.id ? (
+                            <span className="p-2 shrink-0 flex items-center gap-1 text-[11px] text-accent"><Loader2 size={14} className="animate-spin" />{dl.fetched > 0 ? dl.fetched : ''}</span>
+                          ) : (
+                            <button
+                              onClick={() => toggleOffline(m)}
+                              disabled={offlineMode}
+                              className={`p-2 shrink-0 transition-colors disabled:opacity-40 ${offlineIds.has(m.id) ? 'text-accent hover:text-danger' : 'text-faint hover:text-accent'}`}
+                              aria-label={offlineIds.has(m.id) ? 'Remove offline copy' : 'Keep offline'}
+                              title={offlineIds.has(m.id) ? 'Available offline — tap to remove' : 'Keep offline'}
+                            >
+                              {offlineIds.has(m.id) ? <CheckCircle2 size={16} /> : <Download size={16} />}
+                            </button>
+                          )}
+                          {editingId === m.id ? (
+                            <button onMouseDown={(e) => { e.preventDefault(); saveEdit(); }} className="p-2 text-accent shrink-0" aria-label="Save name"><Check size={16} /></button>
+                          ) : (
+                            <button onClick={() => startEdit(m)} disabled={offlineMode} className="p-2 text-faint hover:text-accent shrink-0 disabled:opacity-40" aria-label="Rename"><Pencil size={15} /></button>
+                          )}
+                          <button onClick={() => handleDelete(m)} disabled={offlineMode} className="p-2 text-faint hover:text-danger shrink-0 disabled:opacity-40" aria-label="Delete manual"><Trash2 size={16} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -29,9 +29,23 @@ export interface ManualRecord {
   chunks: number;
   status: string;
   type?: string; // 'pdf' | 'docx'
+  category?: string; // key from CATEGORIES
   addedBy?: string | null;
   addedAt?: string;
 }
+
+// Library categories — organisational only (retrieval is unaffected).
+// Keys are stored in the manifest; labels/icons are a client concern.
+export const CATEGORIES: { key: string; label: string }[] = [
+  { key: 'equipment', label: 'Equipment manuals' },
+  { key: 'safety', label: 'Safety & compliance' },
+  { key: 'procedures', label: 'Procedures & guides' },
+  { key: 'testing', label: 'Test & measurement' },
+  { key: 'other', label: 'Other' },
+];
+
+export const categoryLabel = (key?: string): string =>
+  CATEGORIES.find((c) => c.key === key)?.label || 'Other';
 
 function authHeaders(): Record<string, string> {
   const t = getAuthToken();
@@ -51,8 +65,8 @@ export async function deleteManual(manualId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
-export async function renameManual(manualId: string, title: string): Promise<void> {
-  const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', manualId, title }) });
+export async function renameManual(manualId: string, title?: string, category?: string): Promise<void> {
+  const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', manualId, title, category }) });
   handleAuthFailure(res);
   if (!res.ok) throw new Error(`Rename failed (${res.status})`);
 }
@@ -83,7 +97,7 @@ export async function downloadManualForOffline(
   }
   if (chunks.length === 0) throw new Error('No stored text found for this item.');
   chunks.sort((a, b) => a.page - b.page);
-  await saveOfflineManual({ id: m.id, title: m.title, type: m.type || 'pdf', pages: m.pages, savedAt: Date.now(), chunks });
+  await saveOfflineManual({ id: m.id, title: m.title, type: m.type || 'pdf', category: m.category, pages: m.pages, savedAt: Date.now(), chunks });
   return chunks.length;
 }
 
@@ -100,17 +114,18 @@ export interface IngestProgress {
 export async function ingestManual(
   file: File,
   onProgress?: (p: IngestProgress) => void,
+  category?: string,
 ): Promise<{ manualId: string; chunks: number }> {
   const isDocx = /\.docx$/i.test(file.name) || file.type.includes('wordprocessingml');
   const title = file.name.replace(/\.(pdf|docx?)$/i, '');
   const manualId = `${slug(file.name)}-${Date.now().toString(36)}`;
   const buf = await file.arrayBuffer();
-  if (isDocx) return ingestDocx(buf, manualId, title, onProgress);
+  if (isDocx) return ingestDocx(buf, manualId, title, onProgress, category);
 
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const total = pdf.numPages;
 
-  await post({ action: 'start', manualId, title, total, unit: 'page' });
+  await post({ action: 'start', manualId, title, total, unit: 'page', category });
 
   let chunks = 0;
   for (let i = 1; i <= total; i++) {
@@ -210,6 +225,7 @@ async function ingestDocx(
   manualId: string,
   title: string,
   onProgress?: (p: IngestProgress) => void,
+  category?: string,
 ): Promise<{ manualId: string; chunks: number }> {
   const mammoth = (await import('mammoth/mammoth.browser')).default;
   const { value: html } = await mammoth.convertToHtml({ arrayBuffer: buf });
@@ -217,7 +233,7 @@ async function ingestDocx(
   if (blocks.length === 0) throw new Error('No readable content found in this document.');
 
   const total = blocks.length;
-  await post({ action: 'start', manualId, title, total, unit: 'section' });
+  await post({ action: 'start', manualId, title, total, unit: 'section', category });
 
   let chunks = 0;
   for (let i = 0; i < total; i++) {

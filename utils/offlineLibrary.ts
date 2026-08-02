@@ -12,6 +12,7 @@ export interface OfflineManual {
   id: string;
   title: string;
   type: string; // 'pdf' | 'docx'
+  category?: string;
   pages: number;
   savedAt: number;
   chunks: OfflineChunk[];
