@@ -64,12 +64,15 @@ async function retrieveManualContext(messages) {
     const title = (titleMap && titleMap[h.metadata?.manualId])
       || h.metadata?.title
       || (kind === 'image' ? 'Reference image' : kind === 'guide' ? 'Guide' : 'Manual');
-    const label = kind === 'image' ? 'reference image' : (kind === 'guide' ? `§${h.metadata?.page ?? '?'}` : `p.${h.metadata?.page ?? '?'}`);
+    const site = h.metadata?.site ? String(h.metadata.site) : '';
+    const label = kind === 'image'
+      ? (site ? `reference image · ${site}` : 'reference image')
+      : (kind === 'guide' ? `§${h.metadata?.page ?? '?'}` : `p.${h.metadata?.page ?? '?'}`);
     return { title, label, kind, text: h.data };
   });
 
   const excerpts = sources
-    .map((s, i) => `[${i + 1}] (${s.kind === 'image' ? `${s.title} — reference image` : `${s.title}, ${s.label}`})\n${s.text}`)
+    .map((s, i) => `[${i + 1}] (${s.kind === 'image' ? `${s.title} — ${s.label}` : `${s.title}, ${s.label}`})\n${s.text}`)
     .join('\n\n');
   const prompt = `RELEVANT MANUAL / GUIDE / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket: (Title, p.X) for manuals, (Title, §X) for guides, (Title — reference image) for images):\n\n${excerpts}`;
   return { prompt, sources };

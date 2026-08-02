@@ -107,19 +107,22 @@ export default async function handler(req, res) {
       if (action === 'ingest') {
         const { photoId, title, image, note, addedBy } = body;
         if (!photoId || !image) { res.status(400).json({ error: 'photoId and image required' }); return; }
+        const site = String(body.site || '').trim().slice(0, 60);
 
         let visionText = '';
         try { visionText = (await describeImage(image, note)).trim(); }
         catch (e) { res.status(502).json({ error: `Vision read failed: ${e.message}` }); return; }
 
         const label = (title || note || 'Reference image').trim();
-        const body_ = [note ? `Note: ${note}` : '', visionText].filter(Boolean).join('\n\n');
+        // The site name is embedded INTO the stored text so semantic retrieval
+        // finds this image when a tech asks about the site by name.
+        const body_ = [site ? `Site: ${site}` : '', note ? `Note: ${note}` : '', visionText].filter(Boolean).join('\n\n');
         const full = `${label}\n\n${body_}`.trim();
         const chunks = chunkText(full);
         const records = chunks.map((c, i) => ({
           id: `${photoId}#${i}`,
           data: c,
-          metadata: { manualId: photoId, title: label, kind: 'reference' },
+          metadata: { manualId: photoId, title: label, kind: 'reference', ...(site ? { site } : {}) },
         }));
         if (records.length) await upsertChunks(records);
 
@@ -128,6 +131,7 @@ export default async function handler(req, res) {
         photos.unshift({
           id: photoId,
           title: label,
+          site: site || null,
           summary,
           chunks: records.length,
           status: records.length ? 'ready' : 'empty',
@@ -140,15 +144,19 @@ export default async function handler(req, res) {
       }
 
       if (action === 'rename') {
-        const { photoId, title } = body;
-        const clean = String(title || '').trim().slice(0, 120);
-        if (!photoId || !clean) { res.status(400).json({ error: 'photoId and title required' }); return; }
+        const { photoId, title, site } = body;
+        const cleanTitle = title !== undefined ? String(title || '').trim().slice(0, 120) : undefined;
+        const cleanSite = site !== undefined ? String(site || '').trim().slice(0, 60) : undefined;
+        if (!photoId || (cleanTitle === undefined && cleanSite === undefined) || cleanTitle === '') {
+          res.status(400).json({ error: 'photoId and a title or site required' }); return;
+        }
         const photos = await getPhotos();
         const p = photos.find((x) => x.id === photoId);
         if (!p) { res.status(404).json({ error: 'Not found' }); return; }
-        p.title = clean;
+        if (cleanTitle !== undefined) p.title = cleanTitle;
+        if (cleanSite !== undefined) p.site = cleanSite || null;
         await savePhotos(photos);
-        res.status(200).json({ ok: true, title: clean });
+        res.status(200).json({ ok: true, title: p.title, site: p.site ?? null });
         return;
       }
 

@@ -57,6 +57,36 @@ export async function renameManual(manualId: string, title: string): Promise<voi
   if (!res.ok) throw new Error(`Rename failed (${res.status})`);
 }
 
+// Download a manual's full extracted text (cursor-paginated) and store it on
+// the device for offline search. Returns the number of chunks saved.
+export async function downloadManualForOffline(
+  m: ManualRecord,
+  onProgress?: (fetched: number) => void,
+): Promise<number> {
+  const { saveOfflineManual } = await import('../utils/offlineLibrary');
+  const chunks: { page: number; unit: 'page' | 'section'; text: string }[] = [];
+  let cursor = '';
+  for (let guard = 0; guard < 100; guard++) {
+    const res = await fetch(API, {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ action: 'export', manualId: m.id, cursor }),
+    });
+    handleAuthFailure(res);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const j = await res.json();
+    for (const c of j.chunks || []) {
+      if (c.text) chunks.push({ page: Number(c.page) || 0, unit: c.unit === 'section' ? 'section' : 'page', text: c.text });
+    }
+    onProgress?.(chunks.length);
+    cursor = j.nextCursor || '';
+    if (!cursor) break;
+  }
+  if (chunks.length === 0) throw new Error('No stored text found for this item.');
+  chunks.sort((a, b) => a.page - b.page);
+  await saveOfflineManual({ id: m.id, title: m.title, type: m.type || 'pdf', pages: m.pages, savedAt: Date.now(), chunks });
+  return chunks.length;
+}
+
 const slug = (s: string) => s.toLowerCase().replace(/\.(pdf|docx?)$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
 export interface IngestProgress {

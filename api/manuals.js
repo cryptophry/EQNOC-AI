@@ -9,7 +9,7 @@
 
 import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
 import {
-  vectorConfigured, upsertChunks, deleteManualVectors, getManuals, saveManuals,
+  vectorConfigured, upsertChunks, deleteManualVectors, getManuals, saveManuals, rangeChunks,
 } from '../lib/vectorStore.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -110,6 +110,21 @@ export default async function handler(req, res) {
         }));
         await upsertChunks(records);
         res.status(200).json({ ok: true, chunksAdded: records.length });
+        return;
+      }
+
+      // Export a manual's stored chunks so the client can keep it offline.
+      // Cursor-paginated; the client loops until nextCursor is empty.
+      if (action === 'export') {
+        const { manualId, cursor } = body;
+        if (!manualId) { res.status(400).json({ error: 'manualId required' }); return; }
+        const { vectors, nextCursor } = await rangeChunks(`${manualId}#`, cursor || '', 400);
+        const chunks = vectors.map((v) => ({
+          page: v.metadata?.page ?? 0,
+          unit: v.metadata?.unit || 'page',
+          text: v.data || '',
+        }));
+        res.status(200).json({ chunks, nextCursor });
         return;
       }
 

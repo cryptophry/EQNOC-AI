@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check } from 'lucide-react';
-import { listManuals, deleteManual, renameManual, ManualRecord, IngestProgress, ingestManual } from '../services/manuals';
+import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check, Download, Search, WifiOff } from 'lucide-react';
+import { listManuals, deleteManual, renameManual, downloadManualForOffline, ManualRecord, IngestProgress, ingestManual } from '../services/manuals';
+import { getOfflineIds, listOfflineManuals, removeOfflineManual, searchOffline, OfflineHit } from '../utils/offlineLibrary';
 
 interface Props {
   onClose: () => void;
@@ -14,13 +15,60 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
   const [uploadingName, setUploadingName] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Offline library
+  const [offlineIds, setOfflineIds] = useState<Set<string>>(new Set());
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [dl, setDl] = useState<{ id: string; fetched: number } | null>(null);
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<OfflineHit[]>([]);
+
   const refresh = async () => {
     setLoading(true);
-    try { setManuals(await listManuals()); setError(''); }
-    catch (e) { setError((e as Error).message); }
-    finally { setLoading(false); }
+    try {
+      setManuals(await listManuals());
+      setOfflineMode(false);
+      setError('');
+    } catch (e) {
+      // No network (or server error): fall back to the device's offline copies.
+      const saved = await listOfflineManuals();
+      if (saved.length > 0) {
+        setManuals(saved.map((s) => ({ id: s.id, title: s.title, pages: s.pages, chunks: 0, status: 'ready', type: s.type })));
+        setOfflineMode(true);
+        setError('');
+      } else {
+        setError((e as Error).message);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); getOfflineIds().then(setOfflineIds); }, []);
+
+  // Offline keyword search over downloaded items (works with no network).
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setHits([]); return; }
+    const t = setTimeout(() => { searchOffline(q).then(setHits); }, 180);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const toggleOffline = async (m: ManualRecord) => {
+    setError('');
+    if (offlineIds.has(m.id)) {
+      await removeOfflineManual(m.id);
+      setOfflineIds((prev) => { const n = new Set(prev); n.delete(m.id); return n; });
+      return;
+    }
+    setDl({ id: m.id, fetched: 0 });
+    try {
+      await downloadManualForOffline(m, (fetched) => setDl({ id: m.id, fetched }));
+      setOfflineIds((prev) => new Set(prev).add(m.id));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDl(null);
+    }
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,9 +148,46 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
 
         {error && <div className="px-4 py-2 text-[13px] text-danger">{error}</div>}
 
-        {/* List */}
+        {/* Offline search — works with no signal over downloaded items */}
+        <div className="px-3 pt-3">
+          <div className="flex items-center gap-2 bg-card-2 border border-line rounded-xl px-3 py-2 focus-ring">
+            <Search size={15} className="text-faint shrink-0" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={offlineIds.size ? 'Search offline library (works with no signal)…' : 'Search — download an item for offline first'}
+              className="flex-1 bg-transparent border-0 outline-none text-[13.5px] placeholder:text-faint"
+              aria-label="Search offline library"
+            />
+            {query && <button onClick={() => setQuery('')} className="text-faint hover:text-ink" aria-label="Clear search"><X size={14} /></button>}
+          </div>
+          {offlineMode && (
+            <div className="mt-2 flex items-center gap-2 text-[12px] text-warn">
+              <WifiOff size={13} /> No connection — showing items saved on this device.
+            </div>
+          )}
+        </div>
+
+        {/* List / search results */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
-          {loading ? (
+          {query.trim() ? (
+            hits.length === 0 ? (
+              <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
+                <Search size={26} /><p className="text-[13px]">{offlineIds.size ? 'No matches in your downloaded items.' : 'Nothing downloaded yet — tap the download icon on an item first.'}</p>
+              </div>
+            ) : hits.map((h, i) => (
+              <div key={i} className="bg-card-2 border border-line rounded-xl p-3.5">
+                <div className="flex items-center gap-2 mb-1 min-w-0">
+                  <FileText size={14} className="text-muted shrink-0" />
+                  <span className="text-[13px] font-semibold truncate">{h.title}</span>
+                  <span className="text-[10.5px] font-mono font-semibold text-accent bg-code-bg border border-line rounded-md px-1.5 py-[1px] shrink-0">
+                    {h.unit === 'section' ? `§${h.page}` : `p.${h.page}`}
+                  </span>
+                </div>
+                <p className="text-[12.5px] leading-[1.6] text-muted whitespace-pre-wrap line-clamp-5 m-0">{h.text}</p>
+              </div>
+            ))
+          ) : loading ? (
             <div className="flex justify-center py-10 text-faint"><Loader2 size={22} className="animate-spin" /></div>
           ) : manuals.length === 0 ? (
             <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
@@ -130,14 +215,28 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
                   {m.status === 'ready'
                     ? <span className="inline-flex items-center gap-1 text-ok"><CheckCircle2 size={12} /> ready</span>
                     : <span className="text-warn">{m.status}</span>}
+                  {offlineIds.has(m.id) && <span className="inline-flex items-center gap-1 text-accent"><Download size={11} /> offline</span>}
                 </div>
               </div>
+              {dl?.id === m.id ? (
+                <span className="p-2 shrink-0 flex items-center gap-1 text-[11px] text-accent"><Loader2 size={14} className="animate-spin" />{dl.fetched > 0 ? dl.fetched : ''}</span>
+              ) : (
+                <button
+                  onClick={() => toggleOffline(m)}
+                  disabled={offlineMode}
+                  className={`p-2 shrink-0 transition-colors disabled:opacity-40 ${offlineIds.has(m.id) ? 'text-accent hover:text-danger' : 'text-faint hover:text-accent'}`}
+                  aria-label={offlineIds.has(m.id) ? 'Remove offline copy' : 'Keep offline'}
+                  title={offlineIds.has(m.id) ? 'Available offline — tap to remove' : 'Keep offline'}
+                >
+                  {offlineIds.has(m.id) ? <CheckCircle2 size={16} /> : <Download size={16} />}
+                </button>
+              )}
               {editingId === m.id ? (
                 <button onMouseDown={(e) => { e.preventDefault(); saveEdit(); }} className="p-2 text-accent shrink-0" aria-label="Save name"><Check size={16} /></button>
               ) : (
-                <button onClick={() => startEdit(m)} className="p-2 text-faint hover:text-accent shrink-0" aria-label="Rename"><Pencil size={15} /></button>
+                <button onClick={() => startEdit(m)} disabled={offlineMode} className="p-2 text-faint hover:text-accent shrink-0 disabled:opacity-40" aria-label="Rename"><Pencil size={15} /></button>
               )}
-              <button onClick={() => handleDelete(m)} className="p-2 text-faint hover:text-danger shrink-0" aria-label="Delete manual"><Trash2 size={16} /></button>
+              <button onClick={() => handleDelete(m)} disabled={offlineMode} className="p-2 text-faint hover:text-danger shrink-0 disabled:opacity-40" aria-label="Delete manual"><Trash2 size={16} /></button>
             </div>
           ))}
         </div>

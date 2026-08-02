@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Upload, Trash2, Loader2, ImageIcon, CheckCircle2, Pencil, Check } from 'lucide-react';
+import { X, Upload, Trash2, Loader2, ImageIcon, CheckCircle2, Pencil, Check, MapPin } from 'lucide-react';
 import { listPhotos, deletePhoto, renamePhoto, ingestPhoto, PhotoRecord } from '../services/photos';
 
 interface Props {
@@ -11,6 +11,8 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [site, setSite] = useState('');
+  const [siteFilter, setSiteFilter] = useState('');
   const [busy, setBusy] = useState<{ done: number; total: number; name: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -34,7 +36,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
         setBusy({ done: i, total: images.length, name: images[i].name });
         // One shared note for the batch; add an index when there are several.
         const perNote = note.trim() && images.length > 1 ? `${note.trim()} (${i + 1})` : note.trim() || undefined;
-        await ingestPhoto(images[i], perNote);
+        await ingestPhoto(images[i], perNote, site.trim() || undefined);
       }
       setNote('');
       await refresh();
@@ -81,7 +83,15 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             onChange={(e) => setNote(e.target.value)}
             disabled={!!busy}
             placeholder="What is this? e.g. Alarm circuit wiring, or rectifier nameplate (optional)"
+            className="w-full mb-2 px-3 py-2.5 rounded-xl bg-card-2 border border-line text-[14px] placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-60"
+          />
+          <input
+            value={site}
+            onChange={(e) => setSite(e.target.value)}
+            disabled={!!busy}
+            placeholder="Site (optional) — e.g. Mt Kellett, Site B"
             className="w-full mb-2.5 px-3 py-2.5 rounded-xl bg-card-2 border border-line text-[14px] placeholder:text-faint focus:outline-none focus:border-accent disabled:opacity-60"
+            aria-label="Site name"
           />
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
           <button
@@ -111,13 +121,27 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
 
         {/* List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
+          {(() => {
+            const sites = Array.from(new Set(photos.map((p) => p.site).filter(Boolean))) as string[];
+            if (sites.length < 2) return null;
+            return (
+              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+                <button onClick={() => setSiteFilter('')} className={`px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${!siteFilter ? 'border-accent text-accent' : 'border-line text-muted hover:text-ink'}`}>All sites</button>
+                {sites.map((s) => (
+                  <button key={s} onClick={() => setSiteFilter(siteFilter === s ? '' : s)} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${siteFilter === s ? 'border-accent text-accent' : 'border-line text-muted hover:text-ink'}`}>
+                    <MapPin size={11} /> {s}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {loading ? (
             <div className="flex justify-center py-10 text-faint"><Loader2 size={22} className="animate-spin" /></div>
           ) : photos.length === 0 ? (
             <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
               <ImageIcon size={30} /><p className="text-[13px]">No reference images yet — upload one to make it searchable.</p>
             </div>
-          ) : photos.map((p) => (
+          ) : photos.filter((p) => !siteFilter || p.site === siteFilter).map((p) => (
             <div key={p.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-start gap-3">
               <ImageIcon size={18} className="text-muted shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
@@ -135,7 +159,8 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
                   <div className="text-[14.5px] font-semibold truncate">{p.title}</div>
                 )}
                 {p.summary && <div className="text-[12px] text-muted line-clamp-2 mt-0.5">{p.summary}</div>}
-                <div className="text-[12px] text-muted flex items-center gap-2 mt-1">
+                <div className="text-[12px] text-muted flex items-center gap-2 mt-1 flex-wrap">
+                  {p.site && <span className="inline-flex items-center gap-1 text-accent bg-code-bg border border-line rounded-full px-2 py-[1px] text-[11px]"><MapPin size={10} /> {p.site}</span>}
                   <span>{p.chunks} sections</span>
                   {p.status === 'ready'
                     ? <span className="inline-flex items-center gap-1 text-ok"><CheckCircle2 size={12} /> ready</span>

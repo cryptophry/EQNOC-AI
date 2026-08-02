@@ -19,6 +19,7 @@ const API = '/api/photos';
 export interface PhotoRecord {
   id: string;
   title: string;
+  site?: string | null;
   summary?: string;
   chunks: number;
   status: string;
@@ -44,8 +45,8 @@ export async function deletePhoto(photoId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
-export async function renamePhoto(photoId: string, title: string): Promise<void> {
-  const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', photoId, title }) });
+export async function renamePhoto(photoId: string, title?: string, site?: string): Promise<void> {
+  const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', photoId, title, site }) });
   handleAuthFailure(res);
   if (!res.ok) throw new Error(`Rename failed (${res.status})`);
 }
@@ -94,6 +95,7 @@ export async function ingestPhotoFromDataUrl(
 export async function ingestPhoto(
   file: File,
   note?: string,
+  site?: string,
 ): Promise<{ photoId: string; chunks: number; summary?: string }> {
   const dataUrl = await toDownscaledDataUrl(file);
   const photoId = `photo-${slug(note || file.name)}-${Date.now().toString(36)}`;
@@ -101,7 +103,7 @@ export async function ingestPhoto(
   const res = await fetch(API, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ action: 'ingest', photoId, title, image: dataUrl, note: note?.trim() || undefined }),
+    body: JSON.stringify({ action: 'ingest', photoId, title, image: dataUrl, note: note?.trim() || undefined, site: site?.trim() || undefined }),
   });
   handleAuthFailure(res);
   if (!res.ok) {
