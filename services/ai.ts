@@ -37,6 +37,34 @@ export function clearAuth(): void {
   try { localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 
+// Silent session renewal: exchange a still-valid token for a fresh one so an
+// actively-used device never expires mid-shift. Returns false when the token
+// is already expired/invalid — the caller should send the user to the login
+// screen. Network failures leave the current token untouched (offline-safe).
+export async function refreshAuthToken(): Promise<boolean> {
+  if (!authToken) return false;
+  let res: Response;
+  try {
+    res = await fetch(LOGIN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: authToken }),
+    });
+  } catch {
+    return true; // offline — keep the existing token and carry on
+  }
+  if (res.status === 401) { clearAuth(); return false; }
+  if (!res.ok) return true; // server hiccup — keep the existing token
+  try {
+    const data = await res.json();
+    if (data.token) {
+      authToken = data.token;
+      try { localStorage.setItem(TOKEN_KEY, data.token); } catch { /* ignore */ }
+    }
+  } catch { /* keep existing token */ }
+  return true;
+}
+
 // Verify a password against the server and store the returned token.
 export async function login(password: string): Promise<void> {
   const res = await fetch(LOGIN_URL, {

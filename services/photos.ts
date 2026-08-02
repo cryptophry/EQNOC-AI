@@ -3,7 +3,16 @@
 // vision model (transcribe + describe) and embeds the result into Upstash so the
 // assistant can answer questions about the photo later.
 
-import { getAuthToken } from './ai';
+import { getAuthToken, clearAuth } from './ai';
+
+// Expired session -> clear the stale token and reload to the login screen.
+function handleAuthFailure(res: Response): void {
+  if (res.status === 401) {
+    clearAuth();
+    window.location.reload();
+    throw new Error('Session expired — signing you out.');
+  }
+}
 
 const API = '/api/photos';
 
@@ -24,17 +33,20 @@ function authHeaders(): Record<string, string> {
 
 export async function listPhotos(): Promise<PhotoRecord[]> {
   const res = await fetch(API, { headers: authHeaders() });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`List failed (${res.status})`);
   return (await res.json()).photos || [];
 }
 
 export async function deletePhoto(photoId: string): Promise<void> {
   const res = await fetch(API, { method: 'DELETE', headers: authHeaders(), body: JSON.stringify({ photoId }) });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
 export async function renamePhoto(photoId: string, title: string): Promise<void> {
   const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', photoId, title }) });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`Rename failed (${res.status})`);
 }
 
@@ -91,6 +103,7 @@ export async function ingestPhoto(
     headers: authHeaders(),
     body: JSON.stringify({ action: 'ingest', photoId, title, image: dataUrl, note: note?.trim() || undefined }),
   });
+  handleAuthFailure(res);
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }

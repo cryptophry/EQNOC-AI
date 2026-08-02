@@ -4,8 +4,19 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { getAuthToken } from './ai';
+import { getAuthToken, clearAuth } from './ai';
 import { downscaleImage } from '../utils/image';
+
+// An expired session means every call here 401s. Rather than surfacing raw
+// errors in the modal, drop the stale token and reload — the app lands on the
+// login screen.
+function handleAuthFailure(res: Response): void {
+  if (res.status === 401) {
+    clearAuth();
+    window.location.reload();
+    throw new Error('Session expired — signing you out.');
+  }
+}
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -29,17 +40,20 @@ function authHeaders(): Record<string, string> {
 
 export async function listManuals(): Promise<ManualRecord[]> {
   const res = await fetch(API, { headers: authHeaders() });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`List failed (${res.status})`);
   return (await res.json()).manuals || [];
 }
 
 export async function deleteManual(manualId: string): Promise<void> {
   const res = await fetch(API, { method: 'DELETE', headers: authHeaders(), body: JSON.stringify({ manualId }) });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
 export async function renameManual(manualId: string, title: string): Promise<void> {
   const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', manualId, title }) });
+  handleAuthFailure(res);
   if (!res.ok) throw new Error(`Rename failed (${res.status})`);
 }
 
@@ -199,6 +213,7 @@ async function ingestDocx(
 
 async function post(body: unknown): Promise<{ chunksAdded?: number } & Record<string, unknown>> {
   const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify(body) });
+  handleAuthFailure(res);
   if (!res.ok) {
     let detail = '';
     try { detail = (await res.json()).error || ''; } catch { /* ignore */ }

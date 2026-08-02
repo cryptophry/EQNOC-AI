@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   createChatSession, generateShiftHandover, checkAiHealth, StreamChunk,
-  isAuthenticated as hasAuthToken, clearAuth, AuthError,
+  isAuthenticated as hasAuthToken, clearAuth, AuthError, refreshAuthToken,
 } from './services/ai';
 import { Message, MessageRole, Session } from './types';
 import {
@@ -31,6 +31,14 @@ const SUGGESTIONS = [
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => hasAuthToken());
+
+  // Silently renew the session on app open so an actively-used device never
+  // expires mid-shift; if the stored token has already expired, drop straight
+  // to the login screen instead of surfacing 401s from features later.
+  useEffect(() => {
+    if (!hasAuthToken()) return;
+    refreshAuthToken().then((ok) => { if (!ok) setIsAuthenticated(false); }).catch(() => {});
+  }, []);
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([

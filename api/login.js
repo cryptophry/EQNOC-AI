@@ -7,7 +7,7 @@
 //   APP_PASSWORD - required, the shared login password
 //   AUTH_SECRET  - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
-import { signToken, signingSecret, passwordMatches, rateLimit, clientIp } from '../lib/auth.js';
+import { signToken, signingSecret, passwordMatches, verifyToken, rateLimit, clientIp } from '../lib/auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -33,6 +33,19 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = null; }
   }
   const password = body && typeof body.password === 'string' ? body.password : '';
+  const existing = body && typeof body.token === 'string' ? body.token : '';
+
+  // Silent renewal: a still-valid token can be exchanged for a fresh one, so
+  // active devices never hit expiry mid-use. Expired/invalid tokens (or no
+  // token) require the password as before.
+  if (!password && existing) {
+    if (verifyToken(signingSecret(), existing)) {
+      res.status(200).json({ token: signToken(signingSecret()) });
+    } else {
+      res.status(401).json({ error: 'Session expired. Please sign in again.' });
+    }
+    return;
+  }
 
   if (!passwordMatches(password)) {
     res.status(401).json({ error: 'Invalid credentials' });
