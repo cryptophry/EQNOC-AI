@@ -16,6 +16,7 @@ const ManualsModal = lazy(() => import('./components/ManualsModal'));
 const PhotosModal = lazy(() => import('./components/PhotosModal'));
 import ReminderModal, { Reminder } from './components/ReminderModal';
 import { ingestPhotoFromDataUrl } from './services/photos';
+import { downscaleImage } from './utils/image';
 import { playAlertSound } from './utils/audio';
 
 const SUGGESTIONS = [
@@ -165,11 +166,21 @@ const App: React.FC = () => {
     const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result as string); r.onerror = rej;
   });
 
+  // Downscale on attach so large photos don't blow past the serverless body
+  // limit (413) when sent to the AI. Falls back to the raw image if it fails.
+  const attachImage = async (file: File) => {
+    try { setAttachment({ base64: await downscaleImage(file), type: 'image/jpeg' }); }
+    catch (err) {
+      console.error('downscale failed, attaching raw', err);
+      try { setAttachment({ base64: await convertFileToBase64(file), type: file.type }); } catch (e2) { console.error(e2); }
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) { alert('Only image files are supported.'); return; }
-      try { setAttachment({ base64: await convertFileToBase64(file), type: file.type }); } catch (err) { console.error(err); }
+      await attachImage(file);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -179,7 +190,7 @@ const App: React.FC = () => {
       if (item.type.startsWith('image')) {
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) { try { setAttachment({ base64: await convertFileToBase64(file), type: file.type }); } catch (err) { console.error(err); } }
+        if (file) await attachImage(file);
         break;
       }
     }
