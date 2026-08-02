@@ -3,7 +3,7 @@
 // Exports keep the same names/signatures as the old services/gemini.ts so
 // components did not need rewiring.
 
-import { Session, SourceExcerpt } from "../types";
+import { SourceExcerpt } from "../types";
 
 const API_URL = '/api/ai';
 const LOGIN_URL = '/api/login';
@@ -127,19 +127,6 @@ async function callApi(body: any, signal?: AbortSignal): Promise<Response> {
   return res;
 }
 
-// One-shot utility calls get a 60s timeout so a hung request doesn't spin a
-// component's loading state forever.
-const ONE_SHOT_TIMEOUT_MS = 60_000;
-
-async function generateText(prompt: string, system?: string): Promise<string> {
-  const messages: any[] = [];
-  if (system) messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user', content: prompt });
-  const res = await callApi({ messages }, AbortSignal.timeout(ONE_SHOT_TIMEOUT_MS));
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
 // Robust JSON extraction: models sometimes wrap JSON in ```json fences or prose.
 export function extractJson<T>(text: string): T | null {
   if (!text) return null;
@@ -174,22 +161,6 @@ export async function checkAiHealth(): Promise<{ ok: boolean; configured: boolea
 // --- Chat session with tool calling (OpenAI/OpenRouter format) ---
 
 const CHAT_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'generate_shift_report',
-      description: 'Generate a handover report for the current shift.',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'start_new_shift',
-      description: 'Reset the shift timer and clear current shift logs.',
-      parameters: { type: 'object', properties: {} }
-    }
-  },
   {
     type: 'function',
     function: {
@@ -249,7 +220,7 @@ type GeminiStylePart = { text?: string; inlineData?: { mimeType: string; data: s
 type GeminiStyleToolResponse = { functionResponse: { id?: string; name: string; response: any } };
 type SendMessageInput = string | GeminiStylePart[] | GeminiStyleToolResponse[];
 
-// Keep the client-side conversation bounded: without this, a long shift grows
+// Keep the client-side conversation bounded: without this, a long day grows
 // the request every turn until it exceeds the model context window (400s).
 // Counts individual messages (a turn may be user + assistant + tool messages).
 const MAX_HISTORY_MESSAGES = 40;
@@ -418,61 +389,4 @@ export const createChatSession = (history?: any[]) => {
   return new ChatSession(history);
 };
 
-// --- Feature functions (same signatures as before) ---
-
-export const generateShiftHandover = async (sessions: Session[]): Promise<string> => {
-  const sessionSummary = sessions.map(s => `
-    - Time: ${new Date(s.timestamp).toLocaleTimeString()}
-    - Title: ${s.title}
-    - Details: ${s.messages.filter(m => m.role !== 'system').map(m => `[${m.role}]: ${m.text}`).join(' | ').substring(0, 500)}...
-    `).join('\n');
-
-  const dateStr = new Date().toLocaleDateString();
-
-  const prompt = `
-    You are a Network Operations Center Senior Engineer acting as an assistant.
-    Generate a formal shift handover email based EXCLUSIVELY on the following activity log.
-
-    STRICT FORMATTING REQUIREMENTS:
-    1. Start with "Hi Team,"
-    2. Header: "Please find below the handover notes from [Shift Name e.g. Late Shift] (${dateStr})"
-    3. Use the section headers below.
-
-    SECTIONS TO POPULATE:
-
-    --- Incidents / Outages ---
-    [Format: EQNINCxxxxxxx - Title/Location - Description - Status]
-    (CRITICAL RULE: ONLY include incidents/outages that the USER explicitly mentioned, asked about, or worked on.)
-    (IGNORE any outages that were only mentioned by the System/Assistant as a status update or greeting if the User did not engage with them.)
-    (If Ticket ID is missing, generate a placeholder EQNINC...)
-    (If no user-engaged incidents exist, write "Nil")
-
-    --- Changes Implemented ---
-    [Format: EQNCHGxxxxxxx - Description - Time - Outcome]
-    (Extract configuration changes or planned works completed. If none, write "Nil")
-
-    --- Changes Scheduled for Next Shift ---
-    (Infer from logs if there are upcoming scheduled works. If none, write "Nil")
-
-    --- Generators Running ---
-    [Format: Site Name - [Details provided by user including fuel level]]
-    (Example: "MOARCS - Running on generator due to mains failure - Fuel 94%")
-    (Include this section ONLY if specific generator info was provided by the user. If not, OMIT this entire section.)
-
-    --- Active RTUs Currently Down ---
-    (Include ONLY if RTU/SCADA devices were reported down by the user. List them. If none, OMIT this entire section)
-
-    --- Shift-End Validation Checklist ---
-    [ ] All site access logs reviewed and confirmed closed.
-    [ ] Fuel levels checked on all running generators.
-    [ ] Phone queue verified empty (0 calls waiting).
-    [ ] Alarm console clear critical alerts. (Mark as [ ] if there are active incidents in the first section, otherwise [/])
-    [ ] All open incidents from shift handed over with latest status in ticket system.
-
-    ACTIVITY LOG:
-    ${sessionSummary}
-    `;
-
-  return (await generateText(prompt)) || "Report generation failed.";
-};
 

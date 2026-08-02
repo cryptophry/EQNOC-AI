@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
-  createChatSession, generateShiftHandover, checkAiHealth, StreamChunk,
+  createChatSession, checkAiHealth, StreamChunk,
   isAuthenticated as hasAuthToken, clearAuth, AuthError, refreshAuthToken,
 } from './services/ai';
 import { Message, MessageRole, Session } from './types';
 import {
   Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
-  FileText, RotateCcw, ChevronRight, Loader2, ImageIcon,
+  FileText, ChevronRight, Loader2, ImageIcon,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import SourcesPanel from './components/SourcesPanel';
@@ -25,7 +25,6 @@ const SUGGESTIONS = [
   'Fibre colour code & connector guide',
   'Safety check for a site job',
   'Draft a job or defect report',
-  'Generate my shift handover',
   'Explain a Cisco vs Juniper command',
 ];
 
@@ -92,33 +91,8 @@ const App: React.FC = () => {
 
   const handleDismissAlarm = (id: string) => setReminders(prev => prev.filter(r => r.id !== id));
 
-  // Shift
-  const [shiftStartTime, setShiftStartTime] = useState<number>(() => {
-    try { const s = localStorage.getItem('eqnoc_shift_start'); const p = s ? parseInt(s, 10) : NaN; return isNaN(p) ? 0 : p; } catch { return 0; }
-  });
-  const [shiftElapsed, setShiftElapsed] = useState('');
-  useEffect(() => {
-    const fmt = () => {
-      if (!shiftStartTime) { setShiftElapsed('Not started'); return; }
-      const d = Math.max(0, Date.now() - shiftStartTime);
-      const h = Math.floor(d / 3600000), m = Math.floor((d % 3600000) / 60000);
-      setShiftElapsed(`${h}h ${m}m`);
-    };
-    fmt();
-    const t = setInterval(fmt, 30000);
-    return () => clearInterval(t);
-  }, [shiftStartTime]);
-
-  const handleShiftReset = () => {
-    const now = Date.now();
-    setShiftStartTime(now);
-    try { localStorage.setItem('eqnoc_shift_start', now.toString()); } catch { /* ignore */ }
-  };
-
-  // Sessions (chat history persistence — powers the shift handover)
+  // Sessions (chat history persistence)
   const [sessions, setSessions] = useState<Session[]>([]);
-  const sessionsRef = useRef(sessions);
-  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const [currentSessionId] = useState<string>(() => Date.now().toString());
   const [sessionSaveFailed, setSessionSaveFailed] = useState(false);
 
@@ -165,8 +139,7 @@ const App: React.FC = () => {
   const scrollToBottom = () => requestAnimationFrame(() => { if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight; });
 
   const getSystemStateContext = () => {
-    const dur = shiftStartTime === 0 ? 'not started' : shiftElapsed;
-    return `[SYSTEM STATE]\n- Shift duration: ${dur}\n- Scratchpad notes: ${notes ? `"${notes.slice(0, 1000)}"` : 'empty'}\n[/SYSTEM STATE]`;
+    return `[SYSTEM STATE]\n- Scratchpad notes: ${notes ? `"${notes.slice(0, 1000)}"` : 'empty'}\n[/SYSTEM STATE]`;
   };
 
   const appendMessage = (m: Message) => setMessages(prev => [...prev, m]);
@@ -284,27 +257,13 @@ const App: React.FC = () => {
       let pending = functionCalls;
       let rounds = 0;
       let workingNotes = notesRef.current;
-      const extraMessages: Message[] = [];
       while (pending.length > 0 && rounds++ < 5) {
         const toolResponses = [];
         for (const fc of pending) {
           const args = (fc.args || {}) as Record<string, unknown>;
           let toolResult = 'Done.';
 
-          if (fc.name === 'generate_shift_report') {
-            const recent = sessionsRef.current.filter(s => s.timestamp >= shiftStartTime).sort((a, b) => b.timestamp - a.timestamp);
-            if (recent.length === 0) { toolResult = 'No activity recorded this shift yet.'; }
-            else {
-              try {
-                const report = await generateShiftHandover(recent);
-                extraMessages.push({ id: `rep-${Date.now()}`, role: MessageRole.MODEL, text: report, timestamp: new Date() });
-                toolResult = 'Shift handover generated and shown below.';
-              } catch { toolResult = 'Failed to generate the handover.'; }
-            }
-          } else if (fc.name === 'start_new_shift') {
-            handleShiftReset();
-            toolResult = 'New shift started — timer reset.';
-          } else if (fc.name === 'set_alarm') {
+          if (fc.name === 'set_alarm') {
             const { message, type, timeValue } = args as { message: string; type: string; timeValue: string };
             let target = 0, display = '';
             if (type === 'RELATIVE_MINUTES') { const mins = parseInt(timeValue, 10); target = Date.now() + mins * 60000; display = `in ${mins} minutes`; }
@@ -341,7 +300,6 @@ const App: React.FC = () => {
       const completed: Message[] = [
         ...withUser,
         { ...botMsg, text: fullText, isStreaming: false, sources: msgSources },
-        ...extraMessages,
       ];
       setMessages(completed);
       saveCurrentSession(completed);
@@ -473,23 +431,6 @@ const App: React.FC = () => {
         {/* Rail */}
         <aside className="flex flex-col gap-4">
           <div className="bg-card border border-line rounded-xl2 p-4">
-            <h3 className="text-[12px] uppercase tracking-[0.6px] text-muted font-semibold mb-3">Shift</h3>
-            <div className="bg-card-2 border border-line rounded-xl px-3.5 py-3 mb-3">
-              <div className="text-[26px] font-bold tracking-[-1px]">{shiftElapsed}</div>
-              <div className="text-[10.5px] uppercase tracking-[0.5px] text-muted font-semibold mt-0.5">Elapsed</div>
-            </div>
-            <button onClick={() => processMessage('Generate my shift handover report.')}
-              className="w-full py-3 rounded-xl text-white text-[14px] font-semibold shadow-accent transition-all hover:brightness-105"
-              style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
-              Generate handover
-            </button>
-            <button onClick={() => processMessage('Start a new shift.')}
-              className="w-full mt-2 py-2.5 rounded-xl text-ink text-[13.5px] font-semibold bg-card-2 border border-line hover:border-line-strong flex items-center justify-center gap-2">
-              <RotateCcw size={14} /> New shift
-            </button>
-          </div>
-
-          <div className="bg-card border border-line rounded-xl2 p-4">
             <h3 className="text-[12px] uppercase tracking-[0.6px] text-muted font-semibold mb-1">Quick tools</h3>
             <button onClick={() => setIsLibraryOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
               <BookOpen size={16} className="text-muted" /> <span className="flex-1 text-left">Command library</span> <ChevronRight size={15} className="text-faint" />
@@ -523,7 +464,7 @@ const App: React.FC = () => {
               <h3 className="text-[15px] font-bold flex items-center gap-2"><StickyNote size={16} className="text-accent" /> Scratchpad</h3>
               <button onClick={() => setIsNotesOpen(false)} className="text-muted hover:text-ink" aria-label="Close notes"><X size={18} /></button>
             </div>
-            <textarea value={notes} onChange={e => handleNotesChange(e.target.value)} placeholder="Jot down anything for this shift…"
+            <textarea value={notes} onChange={e => handleNotesChange(e.target.value)} placeholder="Jot down anything…"
               className="flex-1 w-full resize-none bg-card-2 border border-line rounded-xl p-3 text-[14px] text-ink outline-none focus-ring transition-shadow placeholder:text-faint" />
             <p className="text-[11.5px] text-faint mt-2">The assistant can read and update these notes.</p>
           </div>
