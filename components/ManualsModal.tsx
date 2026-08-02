@@ -153,7 +153,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
         {/* Upload */}
         <div className="p-4 border-b border-line">
           {/* Category for the next upload */}
-          <div className="flex items-center gap-1.5 mb-2.5 overflow-x-auto scrollbar-hide">
+          <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
             <span className="text-[11px] text-faint shrink-0 mr-0.5">File under</span>
             {CATEGORIES.map((c) => (
               <button
@@ -249,7 +249,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
                 const present = CATEGORIES.filter((c) => counts[c.key]);
                 if (present.length < 2) return null;
                 return (
-                  <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+                  <div className="flex flex-wrap gap-1.5 pb-1">
                     <button onClick={() => setCatFilter('')} className={`px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${!catFilter ? 'border-accent text-accent bg-code-bg' : 'border-line text-muted hover:text-ink'}`}>
                       All · {manuals.length}
                     </button>

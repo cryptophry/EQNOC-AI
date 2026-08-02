@@ -125,7 +125,7 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             const sites = Array.from(new Set(photos.map((p) => p.site).filter(Boolean))) as string[];
             if (sites.length < 2) return null;
             return (
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1">
+              <div className="flex flex-wrap gap-1.5 pb-1">
                 <button onClick={() => setSiteFilter('')} className={`px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${!siteFilter ? 'border-accent text-accent' : 'border-line text-muted hover:text-ink'}`}>All sites</button>
                 {sites.map((s) => (
                   <button key={s} onClick={() => setSiteFilter(siteFilter === s ? '' : s)} className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-medium whitespace-nowrap transition-colors ${siteFilter === s ? 'border-accent text-accent' : 'border-line text-muted hover:text-ink'}`}>
