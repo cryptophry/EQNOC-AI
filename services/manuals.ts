@@ -16,6 +16,7 @@ export interface ManualRecord {
   pages: number;
   chunks: number;
   status: string;
+  type?: string; // 'pdf' | 'docx'
   addedBy?: string | null;
   addedAt?: string;
 }
@@ -36,12 +37,13 @@ export async function deleteManual(manualId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
-const slug = (s: string) => s.toLowerCase().replace(/\.pdf$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const slug = (s: string) => s.toLowerCase().replace(/\.(pdf|docx?)$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
 export interface IngestProgress {
   page: number;
   total: number;
   ocr: boolean;
+  unit?: 'page' | 'section';
 }
 
 // Parse a PDF in the browser and stream its pages to the server for ingestion.
@@ -49,13 +51,16 @@ export async function ingestManual(
   file: File,
   onProgress?: (p: IngestProgress) => void,
 ): Promise<{ manualId: string; chunks: number }> {
-  const title = file.name.replace(/\.pdf$/i, '');
+  const isDocx = /\.docx$/i.test(file.name) || file.type.includes('wordprocessingml');
+  const title = file.name.replace(/\.(pdf|docx?)$/i, '');
   const manualId = `${slug(file.name)}-${Date.now().toString(36)}`;
   const buf = await file.arrayBuffer();
+  if (isDocx) return ingestDocx(buf, manualId, title, onProgress);
+
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const total = pdf.numPages;
 
-  await post({ action: 'start', manualId, title, total });
+  await post({ action: 'start', manualId, title, total, unit: 'page' });
 
   let chunks = 0;
   for (let i = 1; i <= total; i++) {
@@ -75,8 +80,37 @@ export async function ingestManual(
       image = canvas.toDataURL('image/jpeg', 0.8);
       text = '';
     }
-    onProgress?.({ page: i, total, ocr: needsOcr });
-    const r = await post({ action: 'ingest', manualId, title, page: i, text, image });
+    onProgress?.({ page: i, total, ocr: needsOcr, unit: 'page' });
+    const r = await post({ action: 'ingest', manualId, title, page: i, text, image, unit: 'page' });
+    chunks += r?.chunksAdded || 0;
+  }
+
+  await post({ action: 'finalize', manualId, chunks });
+  return { manualId, chunks };
+}
+
+// Parse a .docx guide in the browser (mammoth) and stream it to the server in
+// word-bounded "sections" (docx has no pages), reusing the manual ingest path.
+async function ingestDocx(
+  buf: ArrayBuffer,
+  manualId: string,
+  title: string,
+  onProgress?: (p: IngestProgress) => void,
+): Promise<{ manualId: string; chunks: number }> {
+  const mammoth = (await import('mammoth/mammoth.browser')).default;
+  const { value: raw } = await mammoth.extractRawText({ arrayBuffer: buf });
+  const words = (raw || '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) throw new Error('No readable text found in this document.');
+
+  const PER = 450; // words per section — server re-chunks each into ~150-word pieces
+  const total = Math.max(1, Math.ceil(words.length / PER));
+  await post({ action: 'start', manualId, title, total, unit: 'section' });
+
+  let chunks = 0;
+  for (let i = 0; i < total; i++) {
+    const seg = words.slice(i * PER, (i + 1) * PER).join(' ');
+    onProgress?.({ page: i + 1, total, ocr: false, unit: 'section' });
+    const r = await post({ action: 'ingest', manualId, title, page: i + 1, text: seg, unit: 'section' });
     chunks += r?.chunksAdded || 0;
   }
 

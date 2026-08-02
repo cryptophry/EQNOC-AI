@@ -83,17 +83,17 @@ export default async function handler(req, res) {
       const { action } = body || {};
 
       if (action === 'start') {
-        const { manualId, title, total, addedBy } = body;
+        const { manualId, title, total, addedBy, unit } = body;
         if (!manualId || !title) { res.status(400).json({ error: 'manualId and title required' }); return; }
         const manuals = (await getManuals()).filter((m) => m.id !== manualId);
-        manuals.unshift({ id: manualId, title, pages: total || 0, chunks: 0, status: 'processing', addedBy: addedBy || null, addedAt: new Date().toISOString() });
+        manuals.unshift({ id: manualId, title, pages: total || 0, chunks: 0, status: 'processing', type: unit === 'section' ? 'docx' : 'pdf', addedBy: addedBy || null, addedAt: new Date().toISOString() });
         await saveManuals(manuals);
         res.status(200).json({ ok: true });
         return;
       }
 
       if (action === 'ingest') {
-        const { manualId, title, page, text, image } = body;
+        const { manualId, title, page, text, image, unit } = body;
         if (!manualId || !page) { res.status(400).json({ error: 'manualId and page required' }); return; }
         let pageText = (text || '').trim();
         if (pageText.length < 100 && image) {
@@ -104,7 +104,7 @@ export default async function handler(req, res) {
         const records = chunks.map((c, i) => ({
           id: `${manualId}#${page}#${i}`,
           data: c,
-          metadata: { manualId, title: title || manualId, page },
+          metadata: { manualId, title: title || manualId, page, unit: unit || 'page' },
         }));
         await upsertChunks(records);
         res.status(200).json({ ok: true, chunksAdded: records.length });

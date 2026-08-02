@@ -26,7 +26,9 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
     const file = e.target.files?.[0];
     if (fileRef.current) fileRef.current.value = '';
     if (!file) return;
-    if (file.type !== 'application/pdf') { setError('Please choose a PDF file.'); return; }
+    const okPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    const okDocx = /\.docx$/i.test(file.name) || file.type.includes('wordprocessingml');
+    if (!okPdf && !okDocx) { setError('Please choose a PDF or Word (.docx) file.'); return; }
     setError('');
     setUploadingName(file.name);
     setProgress({ page: 0, total: 0, ocr: false });
@@ -51,14 +53,14 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
       <div className="w-full max-w-2xl max-h-[82vh] bg-card border border-line rounded-xl2 shadow-raised flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 sm:p-5 border-b border-line flex items-center gap-3">
           <BookText size={18} className="text-accent" />
-          <h2 className="text-[16px] font-bold">Equipment manuals</h2>
+          <h2 className="text-[16px] font-bold">Manuals &amp; guides</h2>
           <span className="text-[12px] text-muted">{manuals.length}</span>
           <button onClick={onClose} className="ml-auto text-muted hover:text-ink" aria-label="Close"><X size={20} /></button>
         </div>
 
         {/* Upload */}
         <div className="p-4 border-b border-line">
-          <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={handleFile} />
+          <input ref={fileRef} type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="hidden" onChange={handleFile} />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={!!progress}
@@ -66,20 +68,20 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
             style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}
           >
             {progress ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            {progress ? 'Processing…' : 'Upload a manual (PDF)'}
+            {progress ? 'Processing…' : 'Upload a manual or guide (PDF / Word)'}
           </button>
           {progress && (
             <div className="mt-3">
               <div className="flex justify-between text-[12px] text-muted mb-1">
                 <span className="truncate">{uploadingName}</span>
-                <span>{progress.total ? `page ${progress.page}/${progress.total}${progress.ocr ? ' · OCR' : ''}` : 'reading…'}</span>
+                <span>{progress.total ? `${progress.unit === 'section' ? 'section' : 'page'} ${progress.page}/${progress.total}${progress.ocr ? ' · OCR' : ''}` : 'reading…'}</span>
               </div>
               <div className="h-1.5 bg-card-2 rounded-full overflow-hidden">
                 <div className="h-full bg-accent transition-all" style={{ width: progress.total ? `${(progress.page / progress.total) * 100}%` : '10%' }} />
               </div>
             </div>
           )}
-          <p className="text-[11.5px] text-faint mt-2">Text and scanned PDFs both work — scanned pages are OCR'd automatically. Keep the tab open while it processes.</p>
+          <p className="text-[11.5px] text-faint mt-2">Equipment manuals (PDF, incl. scanned — OCR'd automatically) and team-written guides (Word .docx) both work. Keep the tab open while it processes.</p>
         </div>
 
         {error && <div className="px-4 py-2 text-[13px] text-danger">{error}</div>}
@@ -90,7 +92,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
             <div className="flex justify-center py-10 text-faint"><Loader2 size={22} className="animate-spin" /></div>
           ) : manuals.length === 0 ? (
             <div className="text-center py-10 text-faint flex flex-col items-center gap-2">
-              <FileText size={30} /><p className="text-[13px]">No manuals yet — upload one to make it searchable.</p>
+              <FileText size={30} /><p className="text-[13px]">No manuals or guides yet — upload one to make it searchable.</p>
             </div>
           ) : manuals.map((m) => (
             <div key={m.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-center gap-3">
@@ -98,7 +100,7 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
               <div className="flex-1 min-w-0">
                 <div className="text-[14.5px] font-semibold truncate">{m.title}</div>
                 <div className="text-[12px] text-muted flex items-center gap-2">
-                  <span>{m.pages} pages · {m.chunks} sections</span>
+                  <span>{m.type === 'docx' ? `Guide · ${m.chunks} sections` : `${m.pages} pages · ${m.chunks} sections`}</span>
                   {m.status === 'ready'
                     ? <span className="inline-flex items-center gap-1 text-ok"><CheckCircle2 size={12} /> ready</span>
                     : <span className="text-warn">{m.status}</span>}

@@ -56,13 +56,18 @@ async function retrieveManualContext(messages) {
   if (good.length === 0) return null;
   const excerpts = good
     .map((h, i) => {
-      const src = h.metadata?.kind === 'reference'
-        ? `${h.metadata?.title || 'Reference image'} — reference image`
-        : `${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'}`;
+      let src;
+      if (h.metadata?.kind === 'reference') {
+        src = `${h.metadata?.title || 'Reference image'} — reference image`;
+      } else if (h.metadata?.unit === 'section') {
+        src = `${h.metadata?.title || 'Guide'}, §${h.metadata?.page ?? '?'}`;
+      } else {
+        src = `${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'}`;
+      }
       return `[${i + 1}] (${src})\n${h.data}`;
     })
     .join('\n\n');
-  return `RELEVANT EQUIPMENT MANUAL / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket, e.g. (Title, p.X) for manuals or (Title — reference image) for images):\n\n${excerpts}`;
+  return `RELEVANT MANUAL / GUIDE / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket: (Title, p.X) for manuals, (Title, §X) for guides, (Title — reference image) for images):\n\n${excerpts}`;
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';

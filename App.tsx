@@ -480,7 +480,7 @@ const App: React.FC = () => {
               <BookOpen size={16} className="text-muted" /> <span className="flex-1 text-left">Command library</span> <ChevronRight size={15} className="text-faint" />
             </button>
             <button onClick={() => setIsManualsOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <BookText size={16} className="text-muted" /> <span className="flex-1 text-left">Equipment manuals</span> <ChevronRight size={15} className="text-faint" />
+              <BookText size={16} className="text-muted" /> <span className="flex-1 text-left">Manuals &amp; guides</span> <ChevronRight size={15} className="text-faint" />
             </button>
             <button onClick={() => setIsPhotosOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
               <ImageIcon size={16} className="text-muted" /> <span className="flex-1 text-left">Reference images</span> <ChevronRight size={15} className="text-faint" />
