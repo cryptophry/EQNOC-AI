@@ -35,7 +35,7 @@ async function ocrImage(dataUrl) {
     body: JSON.stringify({
       model: VISION_MODEL,
       messages: [{ role: 'user', content: [
-        { type: 'text', text: 'This is a scanned page from an equipment manual. Transcribe ALL text and tables accurately as clean plain text. Output only the transcription.' },
+        { type: 'text', text: 'This is a page or embedded screenshot from an equipment manual or a team guide. Transcribe ALL visible text and tables accurately as clean plain text (keep tables readable, one row per line). If the image is a screenshot, diagram or photo rather than a page of text, ALSO add a short line describing what it shows (e.g. which screen/menu/dialog, or what a diagram depicts). Output only the transcription and that description.' },
         { type: 'image_url', image_url: { url: dataUrl } },
       ] }],
     }),
@@ -97,7 +97,9 @@ export default async function handler(req, res) {
         if (!manualId || !page) { res.status(400).json({ error: 'manualId and page required' }); return; }
         let pageText = (text || '').trim();
         if (pageText.length < 100 && image) {
-          try { pageText = (await ocrImage(image)).trim(); } catch (e) { console.warn('ocr failed p'+page, e.message); }
+          // Scanned PDF page or an embedded guide screenshot — OCR/describe it and
+          // keep any caption/heading we already have for context.
+          try { const ocr = (await ocrImage(image)).trim(); pageText = (pageText ? pageText + '\n\n' : '') + ocr; } catch (e) { console.warn('ocr failed p'+page, e.message); }
         }
         const chunks = chunkText(pageText);
         if (chunks.length === 0) { res.status(200).json({ ok: true, chunksAdded: 0 }); return; }

@@ -5,6 +5,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { getAuthToken } from './ai';
+import { downscaleImage } from '../utils/image';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -89,8 +90,72 @@ export async function ingestManual(
   return { manualId, chunks };
 }
 
-// Parse a .docx guide in the browser (mammoth) and stream it to the server in
-// word-bounded "sections" (docx has no pages), reusing the manual ingest path.
+// --- .docx guides ---
+// Guides are often screenshot-heavy and contain tables, so we render the docx to
+// HTML (mammoth, images inlined as data URLs) and walk it IN READING ORDER into
+// "sections": text runs, tables converted to markdown, and each embedded image
+// as its own section that the server OCRs/describes with the vision model.
+
+type DocxBlock = { kind: 'text'; text: string } | { kind: 'image'; dataUrl: string; caption: string };
+
+function tableToMarkdown(table: Element): string {
+  const rows = Array.from(table.querySelectorAll('tr'));
+  if (!rows.length) return '';
+  const lines: string[] = [];
+  rows.forEach((r, i) => {
+    const cells = Array.from(r.querySelectorAll('th,td')).map((c) => (c.textContent || '').replace(/\s+/g, ' ').trim());
+    if (!cells.length) return;
+    lines.push('| ' + cells.join(' | ') + ' |');
+    if (i === 0) lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
+  });
+  return lines.join('\n');
+}
+
+// Split an over-long text run so no single section is huge (server re-chunks too).
+function splitWords(text: string, per = 450): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  const w = t.split(/\s+/);
+  if (w.length <= per) return [t];
+  const out: string[] = [];
+  for (let i = 0; i < w.length; i += per) out.push(w.slice(i, i + per).join(' '));
+  return out;
+}
+
+function htmlToBlocks(html: string): DocxBlock[] {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const blocks: DocxBlock[] = [];
+  let textBuf: string[] = [];
+  let lastHeading = '';
+  const flush = () => {
+    const t = textBuf.join('\n\n').trim();
+    textBuf = [];
+    for (const seg of splitWords(t)) blocks.push({ kind: 'text', text: seg });
+  };
+  const pushImg = (el: Element) => {
+    const src = el.getAttribute('src') || '';
+    if (src.startsWith('data:image')) { flush(); blocks.push({ kind: 'image', dataUrl: src, caption: lastHeading }); }
+  };
+  const walk = (node: Element) => {
+    for (const child of Array.from(node.children)) {
+      const tag = child.tagName.toLowerCase();
+      if (tag === 'img') pushImg(child);
+      else if (tag === 'table') { const md = tableToMarkdown(child); if (md) textBuf.push(md); }
+      else if (/^h[1-6]$/.test(tag)) { const t = (child.textContent || '').trim(); if (t) { lastHeading = t; textBuf.push(t); } }
+      else if (tag === 'p' || tag === 'li') {
+        const t = (child.textContent || '').trim();
+        if (t) textBuf.push(t);
+        child.querySelectorAll('img').forEach((im) => pushImg(im));
+      }
+      else if (['ul', 'ol', 'div', 'section', 'article', 'header', 'footer', 'body'].includes(tag)) walk(child);
+      else { const t = (child.textContent || '').trim(); if (t) textBuf.push(t); }
+    }
+  };
+  walk(doc.body);
+  flush();
+  return blocks;
+}
+
 async function ingestDocx(
   buf: ArrayBuffer,
   manualId: string,
@@ -98,20 +163,29 @@ async function ingestDocx(
   onProgress?: (p: IngestProgress) => void,
 ): Promise<{ manualId: string; chunks: number }> {
   const mammoth = (await import('mammoth/mammoth.browser')).default;
-  const { value: raw } = await mammoth.extractRawText({ arrayBuffer: buf });
-  const words = (raw || '').split(/\s+/).filter(Boolean);
-  if (words.length === 0) throw new Error('No readable text found in this document.');
+  const { value: html } = await mammoth.convertToHtml({ arrayBuffer: buf });
+  const blocks = htmlToBlocks(html);
+  if (blocks.length === 0) throw new Error('No readable content found in this document.');
 
-  const PER = 450; // words per section — server re-chunks each into ~150-word pieces
-  const total = Math.max(1, Math.ceil(words.length / PER));
+  const total = blocks.length;
   await post({ action: 'start', manualId, title, total, unit: 'section' });
 
   let chunks = 0;
   for (let i = 0; i < total; i++) {
-    const seg = words.slice(i * PER, (i + 1) * PER).join(' ');
-    onProgress?.({ page: i + 1, total, ocr: false, unit: 'section' });
-    const r = await post({ action: 'ingest', manualId, title, page: i + 1, text: seg, unit: 'section' });
-    chunks += r?.chunksAdded || 0;
+    const b = blocks[i];
+    const page = i + 1;
+    if (b.kind === 'image') {
+      onProgress?.({ page, total, ocr: true, unit: 'section' });
+      let image: string | undefined;
+      try { image = await downscaleImage(b.dataUrl); } catch { image = undefined; }
+      if (!image) continue; // unreadable format (e.g. EMF/WMF) — skip this image
+      const r = await post({ action: 'ingest', manualId, title, page, text: b.caption, image, unit: 'section' });
+      chunks += r?.chunksAdded || 0;
+    } else {
+      onProgress?.({ page, total, ocr: false, unit: 'section' });
+      const r = await post({ action: 'ingest', manualId, title, page, text: b.text, unit: 'section' });
+      chunks += r?.chunksAdded || 0;
+    }
   }
 
   await post({ action: 'finalize', manualId, chunks });
