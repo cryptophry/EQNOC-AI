@@ -66,6 +66,13 @@ body {
 /* Soft focus ring used on the primary inputs, matching ACR */
 .focus-ring:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
 
+/* Verify-sources panel micro-animations */
+@keyframes source-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-source-in { animation: source-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
