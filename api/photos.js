@@ -139,6 +139,19 @@ export default async function handler(req, res) {
         return;
       }
 
+      if (action === 'rename') {
+        const { photoId, title } = body;
+        const clean = String(title || '').trim().slice(0, 120);
+        if (!photoId || !clean) { res.status(400).json({ error: 'photoId and title required' }); return; }
+        const photos = await getPhotos();
+        const p = photos.find((x) => x.id === photoId);
+        if (!p) { res.status(404).json({ error: 'Not found' }); return; }
+        p.title = clean;
+        await savePhotos(photos);
+        res.status(200).json({ ok: true, title: clean });
+        return;
+      }
+
       res.status(400).json({ error: 'Unknown action' });
       return;
     }

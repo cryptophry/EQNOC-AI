@@ -38,6 +38,11 @@ export async function deleteManual(manualId: string): Promise<void> {
   if (!res.ok) throw new Error(`Delete failed (${res.status})`);
 }
 
+export async function renameManual(manualId: string, title: string): Promise<void> {
+  const res = await fetch(API, { method: 'POST', headers: authHeaders(), body: JSON.stringify({ action: 'rename', manualId, title }) });
+  if (!res.ok) throw new Error(`Rename failed (${res.status})`);
+}
+
 const slug = (s: string) => s.toLowerCase().replace(/\.(pdf|docx?)$/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
 export interface IngestProgress {

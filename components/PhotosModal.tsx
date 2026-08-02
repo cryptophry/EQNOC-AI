@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Upload, Trash2, Loader2, ImageIcon, CheckCircle2 } from 'lucide-react';
-import { listPhotos, deletePhoto, ingestPhoto, PhotoRecord } from '../services/photos';
+import { X, Upload, Trash2, Loader2, ImageIcon, CheckCircle2, Pencil, Check } from 'lucide-react';
+import { listPhotos, deletePhoto, renamePhoto, ingestPhoto, PhotoRecord } from '../services/photos';
 
 interface Props {
   onClose: () => void;
@@ -48,6 +48,20 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
   const handleDelete = async (p: PhotoRecord) => {
     try { await deletePhoto(p.id); setPhotos((prev) => prev.filter((x) => x.id !== p.id)); }
     catch (e) { setError((e as Error).message); }
+  };
+
+  // Inline rename
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const startEdit = (p: PhotoRecord) => { setEditingId(p.id); setEditTitle(p.title); };
+  const saveEdit = async () => {
+    const id = editingId, title = editTitle.trim();
+    setEditingId(null);
+    if (!id || !title) return;
+    const prev = photos;
+    setPhotos((list) => list.map((x) => (x.id === id ? { ...x, title } : x))); // optimistic
+    try { await renamePhoto(id, title); }
+    catch (e) { setPhotos(prev); setError((e as Error).message); }
   };
 
   return (
@@ -107,7 +121,19 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
             <div key={p.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-start gap-3">
               <ImageIcon size={18} className="text-muted shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <div className="text-[14.5px] font-semibold truncate">{p.title}</div>
+                {editingId === p.id ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                    onBlur={saveEdit}
+                    className="w-full text-[14.5px] font-semibold bg-card border border-accent rounded-md px-2 py-1 outline-none"
+                    aria-label="New name"
+                  />
+                ) : (
+                  <div className="text-[14.5px] font-semibold truncate">{p.title}</div>
+                )}
                 {p.summary && <div className="text-[12px] text-muted line-clamp-2 mt-0.5">{p.summary}</div>}
                 <div className="text-[12px] text-muted flex items-center gap-2 mt-1">
                   <span>{p.chunks} sections</span>
@@ -116,6 +142,11 @@ const PhotosModal: React.FC<Props> = ({ onClose }) => {
                     : <span className="text-warn">{p.status}</span>}
                 </div>
               </div>
+              {editingId === p.id ? (
+                <button onMouseDown={(e) => { e.preventDefault(); saveEdit(); }} className="p-2 text-accent shrink-0" aria-label="Save name"><Check size={16} /></button>
+              ) : (
+                <button onClick={() => startEdit(p)} className="p-2 text-faint hover:text-accent shrink-0" aria-label="Rename"><Pencil size={15} /></button>
+              )}
               <button onClick={() => handleDelete(p)} className="p-2 text-faint hover:text-danger shrink-0" aria-label="Delete photo"><Trash2 size={16} /></button>
             </div>
           ))}

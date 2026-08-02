@@ -113,6 +113,19 @@ export default async function handler(req, res) {
         return;
       }
 
+      if (action === 'rename') {
+        const { manualId, title } = body;
+        const clean = String(title || '').trim().slice(0, 120);
+        if (!manualId || !clean) { res.status(400).json({ error: 'manualId and title required' }); return; }
+        const manuals = await getManuals();
+        const m = manuals.find((x) => x.id === manualId);
+        if (!m) { res.status(404).json({ error: 'Not found' }); return; }
+        m.title = clean;
+        await saveManuals(manuals);
+        res.status(200).json({ ok: true, title: clean });
+        return;
+      }
+
       if (action === 'finalize') {
         const { manualId, chunks } = body;
         const manuals = await getManuals();

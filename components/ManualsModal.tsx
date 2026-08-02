@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2 } from 'lucide-react';
-import { listManuals, deleteManual, ingestManual, ManualRecord, IngestProgress } from '../services/manuals';
+import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check } from 'lucide-react';
+import { listManuals, deleteManual, renameManual, ManualRecord, IngestProgress, ingestManual } from '../services/manuals';
 
 interface Props {
   onClose: () => void;
@@ -46,6 +46,20 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
   const handleDelete = async (m: ManualRecord) => {
     try { await deleteManual(m.id); setManuals((prev) => prev.filter((x) => x.id !== m.id)); }
     catch (e) { setError((e as Error).message); }
+  };
+
+  // Inline rename
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const startEdit = (m: ManualRecord) => { setEditingId(m.id); setEditTitle(m.title); };
+  const saveEdit = async () => {
+    const id = editingId, title = editTitle.trim();
+    setEditingId(null);
+    if (!id || !title) return;
+    const prev = manuals;
+    setManuals((list) => list.map((x) => (x.id === id ? { ...x, title } : x))); // optimistic
+    try { await renameManual(id, title); }
+    catch (e) { setManuals(prev); setError((e as Error).message); }
   };
 
   return (
@@ -98,7 +112,19 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
             <div key={m.id} className="bg-card-2 border border-line rounded-xl p-3.5 flex items-center gap-3">
               <FileText size={18} className="text-muted shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-[14.5px] font-semibold truncate">{m.title}</div>
+                {editingId === m.id ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                    onBlur={saveEdit}
+                    className="w-full text-[14.5px] font-semibold bg-card border border-accent rounded-md px-2 py-1 outline-none"
+                    aria-label="New name"
+                  />
+                ) : (
+                  <div className="text-[14.5px] font-semibold truncate">{m.title}</div>
+                )}
                 <div className="text-[12px] text-muted flex items-center gap-2">
                   <span>{m.type === 'docx' ? `Guide · ${m.chunks} sections` : `${m.pages} pages · ${m.chunks} sections`}</span>
                   {m.status === 'ready'
@@ -106,6 +132,11 @@ const ManualsModal: React.FC<Props> = ({ onClose }) => {
                     : <span className="text-warn">{m.status}</span>}
                 </div>
               </div>
+              {editingId === m.id ? (
+                <button onMouseDown={(e) => { e.preventDefault(); saveEdit(); }} className="p-2 text-accent shrink-0" aria-label="Save name"><Check size={16} /></button>
+              ) : (
+                <button onClick={() => startEdit(m)} className="p-2 text-faint hover:text-accent shrink-0" aria-label="Rename"><Pencil size={15} /></button>
+              )}
               <button onClick={() => handleDelete(m)} className="p-2 text-faint hover:text-danger shrink-0" aria-label="Delete manual"><Trash2 size={16} /></button>
             </div>
           ))}

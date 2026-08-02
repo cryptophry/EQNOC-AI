@@ -23,7 +23,7 @@
 
 import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
-import { vectorConfigured, queryChunks } from '../lib/vectorStore.js';
+import { vectorConfigured, queryChunks, getTitleMap } from '../lib/vectorStore.js';
 
 const RETRIEVE_TOP_K = 6;
 const RETRIEVE_MIN_SCORE = 0.35; // ignore weak matches so general chat isn't polluted
@@ -47,9 +47,11 @@ function lastUserText(messages) {
 async function retrieveManualContext(messages) {
   const query = lastUserText(messages).trim();
   if (!query) return null;
-  let hits;
+  let hits, titleMap;
   try {
-    hits = await queryChunks(query, RETRIEVE_TOP_K);
+    // Titles are resolved from the manifests (in parallel) so renames apply
+    // immediately without rewriting per-chunk metadata.
+    [hits, titleMap] = await Promise.all([queryChunks(query, RETRIEVE_TOP_K), getTitleMap()]);
   } catch (e) {
     console.warn('manual retrieval failed', e.message);
     return null;
@@ -59,7 +61,9 @@ async function retrieveManualContext(messages) {
 
   const sources = good.map((h) => {
     const kind = h.metadata?.kind === 'reference' ? 'image' : (h.metadata?.unit === 'section' ? 'guide' : 'manual');
-    const title = h.metadata?.title || (kind === 'image' ? 'Reference image' : kind === 'guide' ? 'Guide' : 'Manual');
+    const title = (titleMap && titleMap[h.metadata?.manualId])
+      || h.metadata?.title
+      || (kind === 'image' ? 'Reference image' : kind === 'guide' ? 'Guide' : 'Manual');
     const label = kind === 'image' ? 'reference image' : (kind === 'guide' ? `§${h.metadata?.page ?? '?'}` : `p.${h.metadata?.page ?? '?'}`);
     return { title, label, kind, text: h.data };
   });
