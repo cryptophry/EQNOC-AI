@@ -9,6 +9,7 @@ import {
   FileText, RotateCcw, ChevronRight, Loader2, ImageIcon,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
+import SourcesPanel from './components/SourcesPanel';
 import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
 // Lazy — pulls in pdf.js only when a tech opens the manuals uploader.
@@ -260,12 +261,14 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, botMsg]);
 
       let fullText = '';
+      let msgSources: Message['sources'];
       const functionCalls: { id?: string; name: string; args: Record<string, unknown> }[] = [];
       for await (const chunk of result) {
         const c = chunk as StreamChunk;
         fullText += c.text || '';
+        if (c.sources) msgSources = c.sources;
         if (c.functionCalls) c.functionCalls.forEach(fc => functionCalls.push(fc));
-        setMessages(prev => prev.map(m => (m.id === botMsgId ? { ...m, text: fullText } : m)));
+        setMessages(prev => prev.map(m => (m.id === botMsgId ? { ...m, text: fullText, sources: msgSources } : m)));
         scrollToBottom();
       }
 
@@ -320,15 +323,16 @@ const App: React.FC = () => {
         for await (const sub of followUp) {
           const sc = sub as StreamChunk;
           fullText += sc.text || '';
+          if (sc.sources) msgSources = sc.sources;
           if (sc.functionCalls) sc.functionCalls.forEach(fc => next.push(fc));
-          setMessages(prev => prev.map(m => (m.id === botMsgId ? { ...m, text: fullText } : m)));
+          setMessages(prev => prev.map(m => (m.id === botMsgId ? { ...m, text: fullText, sources: msgSources } : m)));
         }
         pending = next;
       }
 
       const completed: Message[] = [
         ...withUser,
-        { ...botMsg, text: fullText, isStreaming: false },
+        { ...botMsg, text: fullText, isStreaming: false, sources: msgSources },
         ...extraMessages,
       ];
       setMessages(completed);
@@ -404,7 +408,10 @@ const App: React.FC = () => {
                 }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(155deg, var(--accent-2), var(--accent))' } : {}}>
                   {msg.role === MessageRole.USER
                     ? <span className="whitespace-pre-wrap">{msg.text}{msg.images?.map((im, i) => <img key={i} src={im} alt="" className="mt-2 max-w-[220px] rounded-lg" />)}</span>
-                    : <MessageContent text={msg.text} isStreaming={msg.isStreaming} images={msg.images} />}
+                    : <>
+                        <MessageContent text={msg.text} isStreaming={msg.isStreaming} images={msg.images} />
+                        {msg.role === MessageRole.MODEL && !msg.isStreaming && msg.sources && <SourcesPanel sources={msg.sources} />}
+                      </>}
                 </div>
               </div>
             ))}

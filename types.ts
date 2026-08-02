@@ -6,6 +6,15 @@ export enum MessageRole {
   FUNCTION = 'function'
 }
 
+// A verbatim excerpt the server retrieved to ground an answer — shown to the
+// tech so they can verify the answer against the original source wording.
+export interface SourceExcerpt {
+  title: string;
+  label: string; // "p.4" | "§2" | "reference image"
+  kind: 'manual' | 'guide' | 'image';
+  text: string;  // the exact stored text the answer drew on
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -14,6 +23,7 @@ export interface Message {
   isStreaming?: boolean;
   groundingMetadata?: any;
   images?: string[]; // Base64 strings for displayed images
+  sources?: SourceExcerpt[]; // retrieved manual/guide/image excerpts for this answer
 }
 
 export interface Session {

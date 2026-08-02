@@ -3,7 +3,7 @@
 // Exports keep the same names/signatures as the old services/gemini.ts so
 // components did not need rewiring.
 
-import { Session } from "../types";
+import { Session, SourceExcerpt } from "../types";
 
 const API_URL = '/api/ai';
 const LOGIN_URL = '/api/login';
@@ -63,6 +63,7 @@ export async function login(password: string): Promise<void> {
 export interface StreamChunk {
   text?: string;
   functionCalls?: { id?: string; name: string; args: any }[];
+  sources?: SourceExcerpt[]; // retrieved excerpts (emitted once, before the answer)
   candidates?: any[]; // kept for compatibility; always empty
 }
 
@@ -326,6 +327,12 @@ export class ChatSession {
         if (data === '[DONE]') continue;
         let parsed: any;
         try { parsed = JSON.parse(data); } catch { continue; }
+
+        // Custom server event: retrieved source excerpts for verification.
+        if (Array.isArray(parsed.sources)) {
+          yield { sources: parsed.sources };
+          continue;
+        }
 
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;

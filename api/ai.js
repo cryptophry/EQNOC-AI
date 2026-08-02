@@ -41,7 +41,9 @@ function lastUserText(messages) {
   return '';
 }
 
-// Query the manual store and format grounded excerpts to inject into the prompt.
+// Query the manual store; returns { prompt, sources } — the prompt is injected
+// into the system message, and the structured sources are streamed to the client
+// so the tech can verify the answer against the original wording.
 async function retrieveManualContext(messages) {
   const query = lastUserText(messages).trim();
   if (!query) return null;
@@ -54,20 +56,19 @@ async function retrieveManualContext(messages) {
   }
   const good = (hits || []).filter((h) => (h.score ?? 0) >= RETRIEVE_MIN_SCORE && h.data);
   if (good.length === 0) return null;
-  const excerpts = good
-    .map((h, i) => {
-      let src;
-      if (h.metadata?.kind === 'reference') {
-        src = `${h.metadata?.title || 'Reference image'} — reference image`;
-      } else if (h.metadata?.unit === 'section') {
-        src = `${h.metadata?.title || 'Guide'}, §${h.metadata?.page ?? '?'}`;
-      } else {
-        src = `${h.metadata?.title || 'Manual'}, p.${h.metadata?.page ?? '?'}`;
-      }
-      return `[${i + 1}] (${src})\n${h.data}`;
-    })
+
+  const sources = good.map((h) => {
+    const kind = h.metadata?.kind === 'reference' ? 'image' : (h.metadata?.unit === 'section' ? 'guide' : 'manual');
+    const title = h.metadata?.title || (kind === 'image' ? 'Reference image' : kind === 'guide' ? 'Guide' : 'Manual');
+    const label = kind === 'image' ? 'reference image' : (kind === 'guide' ? `§${h.metadata?.page ?? '?'}` : `p.${h.metadata?.page ?? '?'}`);
+    return { title, label, kind, text: h.data };
+  });
+
+  const excerpts = sources
+    .map((s, i) => `[${i + 1}] (${s.kind === 'image' ? `${s.title} — reference image` : `${s.title}, ${s.label}`})\n${s.text}`)
     .join('\n\n');
-  return `RELEVANT MANUAL / GUIDE / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket: (Title, p.X) for manuals, (Title, §X) for guides, (Title — reference image) for images):\n\n${excerpts}`;
+  const prompt = `RELEVANT MANUAL / GUIDE / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket: (Title, p.X) for manuals, (Title, §X) for guides, (Title — reference image) for images):\n\n${excerpts}`;
+  return { prompt, sources };
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -145,12 +146,13 @@ export default async function handler(req, res) {
   // --- Inject the knowledge-base system prompt server-side when requested ---
   // (chat sessions set useKnowledgeBase; one-shot utility calls don't need it.)
   let messages = body.messages;
+  let retrievedSources = null; // structured excerpts, streamed to the client for verification
   if (body.useKnowledgeBase) {
     const systemParts = [EQNOC_KNOWLEDGE_BASE];
     // Retrieve relevant manual excerpts (RAG) if the manual store is configured.
     if (vectorConfigured()) {
       const manualCtx = await retrieveManualContext(body.messages);
-      if (manualCtx) systemParts.push(manualCtx);
+      if (manualCtx) { systemParts.push(manualCtx.prompt); retrievedSources = manualCtx.sources; }
     }
     messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messages];
   }
@@ -216,6 +218,11 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    // Emit the retrieved sources first, as a custom SSE event — clients that
+    // don't know about it skip it (no choices/delta), newer clients render it.
+    if (retrievedSources && retrievedSources.length > 0) {
+      res.write(`data: ${JSON.stringify({ sources: retrievedSources })}\n\n`);
+    }
     const reader = upstream.body.getReader();
     try {
       while (true) {
@@ -234,6 +241,7 @@ export default async function handler(req, res) {
     clearTimeout(timeout);
     req.off?.('close', onClose);
     const data = await upstream.json();
+    if (retrievedSources && retrievedSources.length > 0) data.sources = retrievedSources;
     res.status(200).json(data);
   }
 }
