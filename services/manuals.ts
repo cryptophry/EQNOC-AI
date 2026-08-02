@@ -38,6 +38,7 @@ export interface ManualRecord {
 // Keys are stored in the manifest; labels/icons are a client concern.
 export const CATEGORIES: { key: string; label: string }[] = [
   { key: 'equipment', label: 'Equipment manuals' },
+  { key: 'datasheets', label: 'Datasheets' },
   { key: 'safety', label: 'Safety & compliance' },
   { key: 'procedures', label: 'Procedures & guides' },
   { key: 'testing', label: 'Test & measurement' },

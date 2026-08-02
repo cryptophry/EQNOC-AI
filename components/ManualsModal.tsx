@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check, Download, Search, WifiOff, ShieldCheck, ClipboardList, Gauge } from 'lucide-react';
+import { X, BookText, Upload, Trash2, Loader2, FileText, CheckCircle2, Pencil, Check, Download, Search, WifiOff, ShieldCheck, ClipboardList, Gauge, FileSpreadsheet } from 'lucide-react';
 import { listManuals, deleteManual, renameManual, downloadManualForOffline, ManualRecord, IngestProgress, ingestManual, CATEGORIES, categoryLabel } from '../services/manuals';
 import { getOfflineIds, listOfflineManuals, removeOfflineManual, searchOffline, OfflineHit } from '../utils/offlineLibrary';
 
 const CAT_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   equipment: BookText,
+  datasheets: FileSpreadsheet,
   safety: ShieldCheck,
   procedures: ClipboardList,
   testing: Gauge,
