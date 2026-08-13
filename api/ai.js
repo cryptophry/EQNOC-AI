@@ -8,16 +8,17 @@
 //   - Aborts the upstream request on timeout or client disconnect
 //   - Best-effort per-IP rate limiting
 //
-// Model routing: a cheap text-only model handles ordinary chat, but if a
-// request contains a pasted image the proxy automatically upgrades that turn to
-// a vision-capable model — so photo/screenshot analysis works without paying
-// vision prices on every text message.
+// Model routing: one vision-capable model (Grok 4.6) handles both text and
+// image turns by default, so a pasted photo is answered by the same model that
+// answers everything else. The split is kept as a mechanism — set
+// OPENROUTER_VISION_MODEL to route image turns to a cheaper vision model
+// (e.g. anthropic/claude-haiku-4.5) without touching the text model.
 //
 // Env vars:
 //   OPENROUTER_API_KEY    - required
 //   OPENROUTER_MODEL      - optional text model, defaults to x-ai/grok-4.6
-//   OPENROUTER_VISION_MODEL - optional model used only when an image is present,
-//                             defaults to anthropic/claude-haiku-4.5
+//   OPENROUTER_VISION_MODEL - optional model for turns containing an image
+//                             (and for ingestion OCR), defaults to x-ai/grok-4.6
 //   APP_PASSWORD          - required (used to sign/verify auth tokens; see lib/auth.js)
 //   AUTH_SECRET           - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
@@ -80,7 +81,7 @@ async function retrieveManualContext(messages) {
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'x-ai/grok-4.6';
-const DEFAULT_VISION_MODEL = 'anthropic/claude-haiku-4.5';
+const DEFAULT_VISION_MODEL = 'x-ai/grok-4.6';
 
 // True if any message carries image content (OpenAI-format image_url parts).
 function hasImageContent(messages) {

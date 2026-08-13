@@ -16,7 +16,7 @@ import {
 } from '../lib/vectorStore.js';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'anthropic/claude-haiku-4.5';
+const VISION_MODEL = process.env.OPENROUTER_VISION_MODEL || 'x-ai/grok-4.6';
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
 function chunkText(text, words = 150, overlap = 25) {
