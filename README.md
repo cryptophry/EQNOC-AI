@@ -10,7 +10,7 @@ AI calls are routed through **OpenRouter** via serverless functions so the API k
 |---|---|---|
 | `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key (server-side only) |
 | `APP_PASSWORD` | Yes | Shared login password, verified server-side |
-| `OPENROUTER_MODEL` | No | Text model for ordinary chat. Defaults to `deepseek/deepseek-v4-flash-0731` (very cheap, text-only). |
+| `OPENROUTER_MODEL` | No | Text model for ordinary chat. Defaults to `x-ai/grok-4.6` (500k context; ~$2/M in, $6/M out). |
 | `OPENROUTER_VISION_MODEL` | No | Model used only for turns that include a pasted image. Defaults to `anthropic/claude-haiku-4.5`. The proxy auto-routes to it when an image is present, so photo/screenshot analysis works without paying vision prices on every message. |
 | `AUTH_SECRET` | No | HMAC secret for signing auth tokens; falls back to `APP_PASSWORD`. Set a long random value in production. |
 

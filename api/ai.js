@@ -15,7 +15,7 @@
 //
 // Env vars:
 //   OPENROUTER_API_KEY    - required
-//   OPENROUTER_MODEL      - optional text model, defaults to deepseek/deepseek-v4-flash-0731
+//   OPENROUTER_MODEL      - optional text model, defaults to x-ai/grok-4.6
 //   OPENROUTER_VISION_MODEL - optional model used only when an image is present,
 //                             defaults to anthropic/claude-haiku-4.5
 //   APP_PASSWORD          - required (used to sign/verify auth tokens; see lib/auth.js)
@@ -79,7 +79,7 @@ async function retrieveManualContext(messages) {
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash-0731';
+const DEFAULT_MODEL = 'x-ai/grok-4.6';
 const DEFAULT_VISION_MODEL = 'anthropic/claude-haiku-4.5';
 
 // True if any message carries image content (OpenAI-format image_url parts).
