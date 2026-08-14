@@ -30,9 +30,12 @@ export default async function handler(req, res) {
   }
   const password = body && typeof body.password === 'string' ? body.password : '';
   const wantRefresh = !!(body && body.refresh);
+  // Pre-cookie clients sent the previous token in the body; still accept it
+  // so a phone on a cached PWA can sign in / renew after this deploy.
+  const presented = tokenFromRequest(req) || (body && typeof body.token === 'string' ? body.token : '');
 
   // Throttle password guesses only — silent cookie refresh must not share the bucket.
-  if (!wantRefresh) {
+  if (password || !wantRefresh && !presented) {
     const ip = clientIp(req);
     const rl = rateLimit(`login:${ip}`, { windowMs: 60_000, max: 10 });
     if (!rl.allowed) {
@@ -41,21 +44,22 @@ export default async function handler(req, res) {
     }
   }
 
-  // Silent renewal: a still-valid cookie can be exchanged for a fresh one
-  // only when it is inside the last week of its TTL. Absolute lifetime is
-  // capped at 90 days from first issue (iat is preserved across renewals).
-  if (wantRefresh || (!password && tokenFromRequest(req))) {
-    const parsed = parseToken(secret, tokenFromRequest(req));
+  // Silent renewal: a still-valid cookie (or leftover body token) can be
+  // exchanged for a fresh one only when it is inside the last week of its TTL.
+  if (wantRefresh || (!password && presented)) {
+    const parsed = parseToken(secret, presented);
     if (!parsed) {
       res.setHeader('Set-Cookie', sessionCookie('', { clear: true }));
       res.status(401).json({ error: 'Session expired. Please sign in again.' });
       return;
     }
+    let token = presented;
     if (shouldRenew(parsed)) {
-      const token = signToken(secret, { iat: parsed.iat });
+      token = signToken(secret, { iat: parsed.iat });
       res.setHeader('Set-Cookie', sessionCookie(token));
     }
-    res.status(200).json({ ok: true });
+    // `token` kept in the JSON for cached pre-cookie clients.
+    res.status(200).json({ ok: true, token });
     return;
   }
 
@@ -66,5 +70,5 @@ export default async function handler(req, res) {
 
   const token = signToken(secret);
   res.setHeader('Set-Cookie', sessionCookie(token));
-  res.status(200).json({ ok: true });
+  res.status(200).json({ ok: true, token });
 }

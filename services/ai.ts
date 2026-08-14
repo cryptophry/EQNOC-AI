@@ -80,6 +80,9 @@ export async function login(password: string): Promise<void> {
   writeSignedIn(true);
 }
 
+// Note: login JSON may still include `token` so older cached PWA clients
+// (which stored it in localStorage) keep working after the cookie migration.
+
 // --- Types (unchanged from the Gemini version) ---
 
 // Shape of chunks yielded by ChatSession.sendMessageStream — mirrors the parts
