@@ -6,7 +6,7 @@ import {
 import { Message, MessageRole, Session } from './types';
 import {
   Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
-  FileText, ChevronRight, Loader2, ImageIcon, LogOut,
+  FileText, ChevronRight, Loader2, ImageIcon, LogOut, User, AlertTriangle,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import SourcesPanel from './components/SourcesPanel';
@@ -393,11 +393,12 @@ const App: React.FC = () => {
 
   if (!isAuthenticated) return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
 
+  const isFresh = messages.length <= 1 && messages[0]?.id === 'init' && !isLoading;
+
   return (
     <div className="min-h-screen lg:h-[100dvh] w-full flex flex-col lg:overflow-hidden" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {/* Alarm banner */}
       {activeAlarms.length > 0 && (
-        <div className="bg-danger text-white text-[13px] font-semibold px-4 py-2 flex items-center gap-2" role="alert">
+        <div className="bg-danger text-white text-[13px] font-semibold px-4 py-2.5 flex items-center gap-2" role="alert">
           <Bell size={14} className="shrink-0" />
           <span className="flex-1 truncate">
             {activeAlarms.length === 1 ? `Reminder: ${activeAlarms[0].text}` : `${activeAlarms.length} active reminders`}
@@ -406,77 +407,99 @@ const App: React.FC = () => {
         </div>
       )}
       {sessionSaveFailed && (
-        <div className="bg-warn/90 text-white text-[12px] font-semibold px-4 py-1.5 flex items-center gap-2" role="alert">
+        <div className="bg-warn text-white text-[12px] font-semibold px-4 py-1.5 flex items-center gap-2" role="alert">
           <FileText size={12} /> Storage full — session history may not persist.
         </div>
       )}
 
-      {/* Top bar */}
-      <header className="h-14 px-4 sm:px-6 flex items-center gap-3 border-b border-line bg-card/60 backdrop-blur-xl sticky top-0 z-20">
-        <div className="w-8 h-8 rounded-[10px] grid place-items-center shrink-0" style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
-          <Activity size={17} className="text-white" strokeWidth={2.2} />
+      <header className="h-[60px] px-4 sm:px-6 flex items-center gap-3 sticky top-0 z-20"
+        style={{ background: 'color-mix(in srgb, var(--app-bg) 72%, transparent)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)', borderBottom: '1px solid var(--line)' }}>
+        <div className="w-9 h-9 rounded-[11px] grid place-items-center shrink-0 shadow-accent"
+          style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
+          <Activity size={18} className="text-white" strokeWidth={2.2} />
         </div>
-        <div className="font-bold text-[16px] tracking-[-0.3px]">Tech <span className="text-accent">Assistant</span></div>
+        <div>
+          <div className="font-bold text-[15.5px] tracking-[-0.35px] leading-none">Tech Assistant</div>
+          <div className="text-[11px] text-faint mt-1 hidden sm:block">Desk &amp; field telecom</div>
+        </div>
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={() => { setIsReminderOpen(true); setHasUnreadAlarm(false); }} className="relative w-9 h-9 grid place-items-center rounded-full border border-line bg-card hover:border-line-strong" aria-label="Reminders">
-            <Bell size={16} className="text-muted" />
-            {hasUnreadAlarm && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-danger" />}
+          <button onClick={() => { setIsReminderOpen(true); setHasUnreadAlarm(false); }} className="icon-btn relative" aria-label="Reminders">
+            <Bell size={16} />
+            {hasUnreadAlarm && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-danger" style={{ boxShadow: '0 0 0 2px var(--card-solid)' }} />}
           </button>
-          <div className="hidden sm:inline-flex items-center gap-2 text-[12.5px] text-muted bg-card border border-line px-3 py-1.5 rounded-full">
-            <span className={`w-2 h-2 rounded-full ${isSystemOnline ? 'bg-ok' : 'bg-danger'}`} style={isSystemOnline ? { boxShadow: '0 0 8px var(--ok)' } : {}} />
-            {isSystemOnline ? 'System online' : 'Offline'}
+          <div className="hidden sm:inline-flex items-center gap-2 text-[12px] text-muted bg-card-solid/60 border border-line px-2.5 py-1.5 rounded-full">
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${isSystemOnline ? 'bg-ok' : 'bg-danger'}`}
+              style={isSystemOnline ? { boxShadow: '0 0 8px var(--ok)', animation: 'pulse-dot 1.8s ease-in-out infinite' } : {}}
+            />
+            {isSystemOnline ? 'Online' : 'Offline'}
           </div>
-          <button onClick={handleSignOut} className="w-9 h-9 grid place-items-center rounded-full border border-line bg-card hover:border-line-strong" aria-label="Sign out" title="Sign out">
-            <LogOut size={15} className="text-muted" />
+          <button onClick={handleSignOut} className="icon-btn" aria-label="Sign out" title="Sign out">
+            <LogOut size={15} />
           </button>
         </div>
       </header>
 
-      {/* Body */}
-      <div className="flex-1 w-full max-w-[1500px] mx-auto p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 min-h-0">
-        {/* Chat */}
-        <section className="bg-card border border-line rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
-          <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 scrollbar-hide">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex gap-2 sm:gap-3 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-[9px] shrink-0 grid place-items-center text-[11px] sm:text-[13px] font-semibold ${
-                  msg.role === MessageRole.USER ? 'bg-card-2 text-muted' : msg.role === MessageRole.SYSTEM ? 'bg-danger/15 text-danger' : 'text-accent'
-                }`} style={msg.role === MessageRole.MODEL ? { background: 'color-mix(in srgb, var(--accent) 14%, transparent)' } : {}}>
-                  {msg.role === MessageRole.USER ? 'You' : msg.role === MessageRole.SYSTEM ? '!' : '◆'}
+      <div className="flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-4 min-h-0">
+        <section className="glass-panel rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
+          <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 nice-scroll">
+            {isFresh ? (
+              <div className="h-full min-h-[280px] flex flex-col items-center justify-center text-center px-2">
+                <div className="w-14 h-14 rounded-[18px] grid place-items-center mb-4 shadow-accent"
+                  style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
+                  <Activity size={26} className="text-white" strokeWidth={2.1} />
                 </div>
-                <div className={`max-w-[88%] sm:max-w-[86%] rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13px] sm:text-[14px] leading-relaxed ${
-                  msg.role === MessageRole.USER ? 'text-white' : 'bg-card-2 border border-line'
-                }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(155deg, var(--accent-2), var(--accent))' } : {}}>
-                  {msg.role === MessageRole.USER
-                    ? <span className="whitespace-pre-wrap">{msg.text}{msg.images?.map((im, i) => <img key={i} src={im} alt="" className="mt-2 max-w-[220px] rounded-lg" />)}</span>
-                    : <>
-                        <MessageContent text={msg.text} isStreaming={msg.isStreaming} images={msg.images} />
-                        {msg.role === MessageRole.MODEL && !msg.isStreaming && msg.sources && <SourcesPanel sources={msg.sources} />}
-                      </>}
+                <h2 className="text-[22px] font-bold tracking-[-0.4px] mb-1.5">What are you working on?</h2>
+                <p className="text-muted text-[13.5px] max-w-[380px] leading-relaxed mb-6">
+                  Readings, CLI, nameplates, safety checks, or a report — paste a photo or start from a prompt.
+                </p>
+                <div className="flex flex-wrap justify-center gap-2 max-w-[520px]">
+                  {SUGGESTIONS.map(s => (
+                    <button key={s} onClick={() => processMessage(s)}
+                      className="text-[12.5px] text-muted bg-card-2/80 border border-line hover:border-accent hover:text-ink px-3.5 py-2 rounded-full transition-colors">
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="space-y-5">
+                {messages.filter(m => m.id !== 'init' || messages.length > 1).map(msg => (
+                  <div key={msg.id} className={`msg-in flex gap-2.5 sm:gap-3 ${msg.role === MessageRole.USER ? 'flex-row-reverse' : ''}`}>
+                    <div className={`w-8 h-8 rounded-[10px] shrink-0 grid place-items-center ${
+                      msg.role === MessageRole.USER ? 'bg-card-2 text-muted' : msg.role === MessageRole.SYSTEM ? 'bg-danger/15 text-danger' : 'text-accent'
+                    }`} style={msg.role === MessageRole.MODEL ? { background: 'color-mix(in srgb, var(--accent) 14%, transparent)' } : {}}>
+                      {msg.role === MessageRole.USER
+                        ? <User size={15} />
+                        : msg.role === MessageRole.SYSTEM
+                          ? <AlertTriangle size={15} />
+                          : <Activity size={15} strokeWidth={2.3} />}
+                    </div>
+                    <div className={`max-w-[88%] sm:max-w-[84%] rounded-[18px] px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13.5px] sm:text-[14.5px] leading-[1.55] ${
+                      msg.role === MessageRole.USER ? 'text-white' : msg.role === MessageRole.SYSTEM ? 'bg-danger/10 border border-danger/20 text-danger' : 'bg-card-2/90 border border-line'
+                    }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(160deg, var(--accent-2), var(--accent) 70%)' } : {}}>
+                      {msg.role === MessageRole.USER
+                        ? <span className="whitespace-pre-wrap">{msg.text}{msg.images?.map((im, i) => <img key={i} src={im} alt="" className="mt-2 max-w-[220px] rounded-xl border border-white/20" />)}</span>
+                        : <>
+                            <MessageContent text={msg.text} isStreaming={msg.isStreaming} images={msg.images} />
+                            {msg.role === MessageRole.MODEL && !msg.isStreaming && msg.sources && <SourcesPanel sources={msg.sources} />}
+                          </>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Suggestion chips */}
-          {messages.length <= 1 && (
-            <div className="flex flex-wrap gap-2 px-4 sm:px-6 pb-3">
-              {SUGGESTIONS.map(s => (
-                <button key={s} onClick={() => processMessage(s)} className="text-[12.5px] text-muted bg-card-2 border border-line hover:border-accent hover:text-ink px-3 py-2 rounded-full transition-colors">{s}</button>
-              ))}
-            </div>
-          )}
-
-          {/* Composer */}
-          <div className="p-3 sm:p-4 border-t border-line">
+          <div className="p-3 sm:p-4" style={{ borderTop: '1px solid var(--line)', background: 'color-mix(in srgb, var(--card-2) 35%, transparent)' }}>
             {attachment && (
-              <div className="flex items-center gap-2 mb-2 text-[12px] text-muted flex-wrap">
-                <img src={attachment.base64} alt="" className="w-9 h-9 rounded-md object-cover border border-line" />
-                Image attached
+              <div className="flex items-center gap-2.5 mb-2.5 text-[12.5px] text-muted flex-wrap">
+                <img src={attachment.base64} alt="" className="w-11 h-11 rounded-xl object-cover border border-line" />
+                <span>Image attached</span>
                 <button onClick={() => { setAttachment(null); setRememberImage(false); }} className="text-faint hover:text-danger" aria-label="Remove attachment"><X size={14} /></button>
                 <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none hover:text-ink transition-colors" title="Save this image to Reference images so you can ask about it in future chats">
                   <input type="checkbox" checked={rememberImage} onChange={e => setRememberImage(e.target.checked)} className="w-3.5 h-3.5 accent-[var(--accent)] cursor-pointer" />
-                  <ImageIcon size={13} /> Remember this image
+                  <ImageIcon size={13} /> Remember
                 </label>
               </div>
             )}
@@ -485,17 +508,17 @@ const App: React.FC = () => {
                 <ImageIcon size={13} className="text-accent" /> {imgSaveNote}
               </div>
             )}
-            <div className="flex items-center gap-2 bg-card-2 border border-line-strong rounded-2xl pl-3 pr-2 py-1.5 focus-ring transition-shadow">
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-lg text-muted hover:text-accent" aria-label="Attach image"><Paperclip size={18} /></button>
+            <div className="flex items-end gap-2 bg-card-solid border border-line-strong rounded-[18px] pl-2 pr-1.5 py-1.5 focus-ring transition-shadow">
+              <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl text-muted hover:text-accent hover:bg-card-2 transition-colors" aria-label="Attach image"><Paperclip size={18} /></button>
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
               <input
                 type="text" value={input} onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()} onPaste={handlePaste}
-                placeholder="Ask anything, or paste logs…" aria-label="Message the assistant" disabled={isLoading}
-                className="flex-1 bg-transparent border-0 outline-none text-ink placeholder:text-faint text-[15px] py-2"
+                placeholder="Ask anything, or paste a photo / logs…" aria-label="Message the assistant" disabled={isLoading}
+                className="flex-1 bg-transparent border-0 outline-none text-ink placeholder:text-faint text-[15px] py-2.5 min-w-0"
               />
               <button onClick={handleSend} disabled={(!input.trim() && !attachment) || isLoading} aria-label="Send"
-                className="w-10 h-10 grid place-items-center rounded-xl text-white shadow-accent disabled:opacity-40 transition-opacity"
+                className="w-11 h-11 grid place-items-center rounded-[14px] text-white shadow-accent disabled:opacity-35 disabled:shadow-none transition-all hover:enabled:brightness-105"
                 style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}>
                 {isLoading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
               </button>
@@ -503,8 +526,7 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* Rail */}
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-3.5">
           <SessionList
             sessions={sessions}
             currentId={currentSessionId}
@@ -512,43 +534,51 @@ const App: React.FC = () => {
             onNew={newChat}
             onDelete={deleteSession}
           />
-          <div className="bg-card border border-line rounded-xl2 p-4">
-            <h3 className="text-[12px] uppercase tracking-[0.6px] text-muted font-semibold mb-1">Quick tools</h3>
-            <button onClick={() => setIsLibraryOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <BookOpen size={16} className="text-muted" /> <span className="flex-1 text-left">Command library</span> <ChevronRight size={15} className="text-faint" />
+          <div className="glass-panel rounded-xl2 p-3">
+            <h3 className="text-[11px] uppercase tracking-[0.08em] text-muted font-semibold px-2 mb-1">Tools</h3>
+            <button onClick={() => setIsLibraryOpen(true)} className="tool-row">
+              <span className="tool-well"><BookOpen size={15} /></span>
+              <span className="flex-1">Command library</span>
+              <ChevronRight size={15} className="text-faint" />
             </button>
-            <button onClick={() => setIsManualsOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <BookText size={16} className="text-muted" /> <span className="flex-1 text-left">Manuals &amp; guides</span> <ChevronRight size={15} className="text-faint" />
+            <button onClick={() => setIsManualsOpen(true)} className="tool-row">
+              <span className="tool-well"><BookText size={15} /></span>
+              <span className="flex-1">Manuals &amp; guides</span>
+              <ChevronRight size={15} className="text-faint" />
             </button>
-            <button onClick={() => setIsPhotosOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <ImageIcon size={16} className="text-muted" /> <span className="flex-1 text-left">Reference images</span> <ChevronRight size={15} className="text-faint" />
+            <button onClick={() => setIsPhotosOpen(true)} className="tool-row">
+              <span className="tool-well"><ImageIcon size={15} /></span>
+              <span className="flex-1">Reference images</span>
+              <ChevronRight size={15} className="text-faint" />
             </button>
-            <button onClick={() => setIsNotesOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">
-              <StickyNote size={16} className="text-muted" /> <span className="flex-1 text-left">Scratchpad notes</span>
-              {notes && <span className="text-[11px] text-faint">{notes.length}</span>} <ChevronRight size={15} className="text-faint" />
+            <button onClick={() => setIsNotesOpen(true)} className="tool-row">
+              <span className="tool-well"><StickyNote size={15} /></span>
+              <span className="flex-1">Scratchpad</span>
+              {notes && <span className="text-[11px] text-faint">{notes.length}</span>}
+              <ChevronRight size={15} className="text-faint" />
             </button>
           </div>
         </aside>
       </div>
 
-      {/* Modals */}
       {isLibraryOpen && <CommandLibraryModal onClose={() => setIsLibraryOpen(false)} onExplainCommand={handleExplainCommand} onSimulateCommand={handleSimulateCommand} />}
       {isManualsOpen && <Suspense fallback={null}><ManualsModal onClose={() => setIsManualsOpen(false)} /></Suspense>}
       {isPhotosOpen && <Suspense fallback={null}><PhotosModal onClose={() => setIsPhotosOpen(false)} /></Suspense>}
       {isReminderOpen && <ReminderModal reminders={reminders} onClose={() => setIsReminderOpen(false)} onAdd={(r) => setReminders(prev => [...prev, r].sort((a, b) => a.time - b.time))} onDelete={handleDismissAlarm} />}
 
-      {/* Notes drawer */}
       {isNotesOpen && (
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setIsNotesOpen(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full max-w-md h-full bg-card border-l border-line p-5 flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-black/45 backdrop-blur-[6px]" style={{ animation: 'fade-in .18s ease both' }} />
+          <div className="relative w-full max-w-md h-full bg-card-solid border-l border-line p-5 flex flex-col shadow-raised"
+            style={{ animation: 'sheet-in .28s cubic-bezier(.32,.85,.35,1) both' }}
+            onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[15px] font-bold flex items-center gap-2"><StickyNote size={16} className="text-accent" /> Scratchpad</h3>
-              <button onClick={() => setIsNotesOpen(false)} className="text-muted hover:text-ink" aria-label="Close notes"><X size={18} /></button>
+              <button onClick={() => setIsNotesOpen(false)} className="icon-btn" aria-label="Close notes"><X size={16} /></button>
             </div>
             <textarea value={notes} onChange={e => handleNotesChange(e.target.value)} placeholder="Jot down anything…"
-              className="flex-1 w-full resize-none bg-card-2 border border-line rounded-xl p-3 text-[14px] text-ink outline-none focus-ring transition-shadow placeholder:text-faint" />
-            <p className="text-[11.5px] text-faint mt-2">The assistant can read and update these notes.</p>
+              className="flex-1 w-full resize-none bg-card-2 border border-line rounded-xl p-3.5 text-[14px] text-ink outline-none focus-ring transition-shadow placeholder:text-faint" />
+            <p className="text-[11.5px] text-faint mt-2.5">The assistant can read and update these notes.</p>
           </div>
         </div>
       )}

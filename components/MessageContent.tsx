@@ -337,7 +337,7 @@ const MessageContent = React.memo<MessageContentProps>(({ text = "", isStreaming
         const content = match ? part.slice(match[0].length) : part;
         return <CodeBlock key={index} content={content} language={lang} />;
       })}
-      {isStreaming && <span className="inline-block w-2 h-5 bg-accent animate-pulse ml-1 align-middle rounded-sm"></span>}
+      {isStreaming && <span className="caret" aria-hidden />}
       
       {/* Display Sources if available */}
       <GroundingSources metadata={groundingMetadata} />

@@ -2,15 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ACR-aligned design tokens. Light by default; dark follows the OS preference.
-   Component code references these via Tailwind (bg-app, text-ink, border-line, …). */
+/* Design tokens. Light by default; dark follows the OS. */
 :root {
-  --app-bg: #f2f5f9;
-  --app-bg-grad: radial-gradient(120% 80% at 50% -10%, #ffffff, #eef2f7 60%);
-  --card: #ffffff;
-  --card-2: #f7f9fc;
-  --line: rgba(11, 27, 43, 0.10);
-  --line-strong: rgba(11, 27, 43, 0.16);
+  --app-bg: #eef2f7;
+  --app-bg-grad:
+    radial-gradient(1200px 700px at 8% -10%, rgba(74, 147, 255, 0.18), transparent 55%),
+    radial-gradient(900px 600px at 100% 0%, rgba(29, 111, 242, 0.10), transparent 50%),
+    radial-gradient(800px 500px at 50% 110%, rgba(0, 70, 204, 0.06), transparent 45%),
+    linear-gradient(180deg, #f7f9fc 0%, #e8eef6 100%);
+  --card: rgba(255, 255, 255, 0.78);
+  --card-solid: #ffffff;
+  --card-2: #f4f7fb;
+  --line: rgba(11, 27, 43, 0.08);
+  --line-strong: rgba(11, 27, 43, 0.14);
   --ink: #0b1b2b;
   --muted: #5b6b80;
   --faint: #8093ab;
@@ -23,21 +27,28 @@
   --danger: #dc2f4c;
   --code-bg: #f2f5fa;
   --code-ink: #1b3a5c;
+  --shadow-panel: 0 1px 0 rgba(255,255,255,0.7) inset, 0 18px 50px -24px rgba(11, 27, 43, 0.28);
+  --grid: rgba(29, 111, 242, 0.045);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --app-bg: #0c1420;
-    --app-bg-grad: radial-gradient(120% 80% at 50% -10%, #16304f, #0c1420 60%);
-    --card: #13202f;
-    --card-2: #172232;
-    --line: rgba(233, 239, 247, 0.08);
-    --line-strong: rgba(233, 239, 247, 0.14);
+    --app-bg: #080e16;
+    --app-bg-grad:
+      radial-gradient(1000px 640px at 0% -10%, rgba(77, 159, 255, 0.16), transparent 55%),
+      radial-gradient(800px 520px at 100% 0%, rgba(29, 111, 242, 0.10), transparent 50%),
+      radial-gradient(700px 480px at 50% 120%, rgba(16, 48, 86, 0.45), transparent 50%),
+      linear-gradient(180deg, #0c1420 0%, #080e16 100%);
+    --card: rgba(16, 26, 40, 0.72);
+    --card-solid: #101a28;
+    --card-2: #152233;
+    --line: rgba(233, 239, 247, 0.07);
+    --line-strong: rgba(233, 239, 247, 0.13);
     --ink: #e9eff7;
     --muted: #8b99ab;
     --faint: #5f7186;
     --accent: #4d9fff;
-    --accent-2: #4a93ff;
+    --accent-2: #6eb0ff;
     --accent-strong: #1d6ff2;
     --accent-ink: #ffffff;
     --ok: #40c057;
@@ -45,17 +56,25 @@
     --danger: #ff6b6b;
     --code-bg: #0b1522;
     --code-ink: #bcd3ee;
+    --shadow-panel: 0 1px 0 rgba(255,255,255,0.04) inset, 0 24px 60px -28px rgba(0, 0, 0, 0.65);
+    --grid: rgba(77, 159, 255, 0.04);
   }
 }
 
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: var(--app-bg-grad);
+  background: var(--app-bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    var(--app-bg-grad);
+  background-size: 48px 48px, 48px 48px, auto;
   background-attachment: fixed;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.011em;
 }
 
 ::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -63,13 +82,124 @@ body {
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* Soft focus ring used on the primary inputs, matching ACR */
-.focus-ring:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+/* Thin, designed scrollbars where we actually show them */
+.nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--faint) 50%, transparent) transparent;
+}
+.nice-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.nice-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--faint) 45%, transparent);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 
-/* Verify-sources panel micro-animations */
+.focus-ring:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line-strong));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.glass-panel {
+  background: var(--card);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-panel);
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card-solid);
+  color: var(--muted);
+  transition: border-color .15s, color .15s, background .15s, transform .12s;
+}
+.icon-btn:hover { border-color: var(--line-strong); color: var(--ink); }
+.icon-btn:active { transform: scale(0.96); }
+
+.tool-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  font-size: 14px;
+  text-align: left;
+  transition: background .15s, color .15s;
+}
+.tool-row:hover { background: var(--card-2); color: var(--accent); }
+.tool-well {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent) 10%, var(--card-2));
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 10, 16, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: fade-in .18s ease both;
+}
+.modal-sheet {
+  background: var(--card-solid);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.45);
+  animation: sheet-in .28s cubic-bezier(.32, .85, .35, 1) both;
+}
+
+.msg-in { animation: msg-in .32s cubic-bezier(.32, .85, .35, 1) both; }
+
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(12px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes source-in {
   from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: none; }
+  to { opacity: 1; transform: none; }
+}
+@keyframes caret { 50% { opacity: 0; } }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 .animate-source-in { animation: source-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 

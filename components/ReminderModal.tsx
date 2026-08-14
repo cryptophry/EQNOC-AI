@@ -54,8 +54,8 @@ const ReminderModal: React.FC<Props> = ({ reminders, onClose, onAdd, onDelete })
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-5" onClick={onClose}>
-      <div className="w-full max-w-lg bg-card border border-line rounded-xl2 shadow-raised flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet w-full max-w-lg flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-line flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 grid place-items-center rounded-xl" style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)' }}>

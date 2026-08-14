@@ -20,34 +20,38 @@ function rel(ts: number): string {
 
 const SessionList: React.FC<Props> = ({ sessions, currentId, onOpen, onNew, onDelete }) => {
   return (
-    <div className="bg-card border border-line rounded-xl2 p-4 flex flex-col min-h-0">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[12px] uppercase tracking-[0.6px] text-muted font-semibold">Chats</h3>
+    <div className="glass-panel rounded-xl2 p-3.5 flex flex-col min-h-0">
+      <div className="flex items-center justify-between px-1 mb-2">
+        <h3 className="text-[11px] uppercase tracking-[0.08em] text-muted font-semibold">Chats</h3>
         <button
           onClick={onNew}
-          className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent hover:underline"
+          className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent hover:brightness-110 transition-all"
         >
           <MessageSquarePlus size={13} /> New
         </button>
       </div>
       {sessions.length === 0 ? (
-        <p className="text-[12.5px] text-faint py-2">No saved chats yet.</p>
+        <p className="text-[12.5px] text-faint px-1 py-3 leading-relaxed">
+          Conversations you start will show up here.
+        </p>
       ) : (
-        <ul className="flex flex-col overflow-y-auto max-h-[240px] -mx-1">
+        <ul className="flex flex-col overflow-y-auto max-h-[240px] nice-scroll gap-0.5">
           {sessions.map((s) => {
             const on = s.id === currentId;
             return (
               <li key={s.id} className="group flex items-stretch">
                 <button
                   onClick={() => onOpen(s.id)}
-                  className={`flex-1 text-left px-2 py-2 rounded-lg min-w-0 ${on ? 'bg-card-2' : 'hover:bg-card-2'}`}
+                  className={`flex-1 text-left px-2.5 py-2 rounded-[10px] min-w-0 transition-colors ${
+                    on ? 'bg-card-2 shadow-[inset_2px_0_0_var(--accent)]' : 'hover:bg-card-2/70'
+                  }`}
                 >
-                  <div className="text-[13px] truncate">{s.title || 'Untitled'}</div>
-                  <div className="text-[11px] text-faint">{rel(s.timestamp)}</div>
+                  <div className={`text-[13px] truncate ${on ? 'font-semibold' : ''}`}>{s.title || 'Untitled'}</div>
+                  <div className="text-[11px] text-faint mt-0.5">{rel(s.timestamp)}</div>
                 </button>
                 <button
                   onClick={() => onDelete(s.id)}
-                  className="opacity-0 group-hover:opacity-100 px-2 text-faint hover:text-danger"
+                  className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 px-2 text-faint hover:text-danger transition-opacity"
                   aria-label="Delete chat"
                 >
                   <Trash2 size={13} />
