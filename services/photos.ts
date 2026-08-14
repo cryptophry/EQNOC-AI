@@ -82,12 +82,13 @@ function toDownscaledDataUrl(file: File, maxEdge = 1600, quality = 0.85): Promis
 export async function ingestPhotoFromDataUrl(
   dataUrl: string,
   note?: string,
+  site?: string,
 ): Promise<{ photoId: string; chunks: number; summary?: string }> {
   const blob = await (await fetch(dataUrl)).blob();
   const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
   const name = (note && note.trim() ? slug(note) : 'pasted') + `.${ext}`;
   const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
-  return ingestPhoto(file, note);
+  return ingestPhoto(file, note, site);
 }
 
 // Ingest one photo. `note` is an optional technician caption ("what is this?").

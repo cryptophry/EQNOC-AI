@@ -299,7 +299,7 @@ const App: React.FC = () => {
     // images store (using their message as the caption) so it's queryable later.
     if (currentAttachment && rememberThis) {
       setImgSaveNote('Saving to Reference images…');
-      ingestPhotoFromDataUrl(currentAttachment.base64, text.trim() || undefined)
+      ingestPhotoFromDataUrl(currentAttachment.base64, text.trim() || undefined, site.trim() || undefined)
         .then(() => setImgSaveNote('Saved to Reference images ✓'))
         .catch((err) => setImgSaveNote(`Couldn't save image: ${(err as Error).message}`))
         .finally(() => setTimeout(() => setImgSaveNote(null), 4000));

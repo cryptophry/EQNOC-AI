@@ -11,12 +11,10 @@
 
 import { verifyToken, signingSecret, tokenFromRequest, rateLimit, clientIp, bodyByteLength } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
-import { vectorConfigured, queryChunks, getTitleMap } from '../lib/vectorStore.js';
+import { vectorConfigured } from '../lib/vectorStore.js';
+import { retrieveLibraryContext } from '../lib/retrieve.js';
 import { CHAT_TOOLS } from '../lib/chatTools.js';
 import { sanitizeMessages } from '../lib/sanitizeMessages.js';
-
-const RETRIEVE_TOP_K = 6;
-const RETRIEVE_MIN_SCORE = 0.35;
 
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -28,38 +26,6 @@ function lastUserText(messages) {
     }
   }
   return '';
-}
-
-async function retrieveManualContext(messages) {
-  const query = lastUserText(messages).trim();
-  if (!query) return null;
-  let hits, titleMap;
-  try {
-    [hits, titleMap] = await Promise.all([queryChunks(query, RETRIEVE_TOP_K), getTitleMap()]);
-  } catch (e) {
-    console.warn('manual retrieval failed', e.message);
-    return null;
-  }
-  const good = (hits || []).filter((h) => (h.score ?? 0) >= RETRIEVE_MIN_SCORE && h.data);
-  if (good.length === 0) return null;
-
-  const sources = good.map((h) => {
-    const kind = h.metadata?.kind === 'reference' ? 'image' : (h.metadata?.unit === 'section' ? 'guide' : 'manual');
-    const title = (titleMap && titleMap[h.metadata?.manualId])
-      || h.metadata?.title
-      || (kind === 'image' ? 'Reference image' : kind === 'guide' ? 'Guide' : 'Manual');
-    const site = h.metadata?.site ? String(h.metadata.site) : '';
-    const label = kind === 'image'
-      ? (site ? `reference image · ${site}` : 'reference image')
-      : (kind === 'guide' ? `§${h.metadata?.page ?? '?'}` : `p.${h.metadata?.page ?? '?'}`);
-    return { title, label, kind, text: h.data };
-  });
-
-  const excerpts = sources
-    .map((s, i) => `[${i + 1}] (${s.kind === 'image' ? `${s.title} — ${s.label}` : `${s.title}, ${s.label}`})\n${s.text}`)
-    .join('\n\n');
-  const prompt = `RELEVANT MANUAL / GUIDE / REFERENCE-IMAGE EXCERPTS (retrieved for this question — prefer these over general knowledge, and CITE the source shown in each bracket: (Title, p.X) for manuals, (Title, §X) for guides, (Title — reference image) for images):\n\n${excerpts}`;
-  return { prompt, sources };
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -153,7 +119,7 @@ export default async function handler(req, res) {
   if (body.useKnowledgeBase) {
     const systemParts = [EQNOC_KNOWLEDGE_BASE];
     if (vectorConfigured()) {
-      const manualCtx = await retrieveManualContext(messagesIn);
+      const manualCtx = await retrieveLibraryContext(lastUserText(messagesIn));
       if (manualCtx) { systemParts.push(manualCtx.prompt); retrievedSources = manualCtx.sources; }
     }
     messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messagesIn];
