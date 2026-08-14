@@ -21,6 +21,7 @@ export default defineConfig(() => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: null, // registered from index.tsx so CSP can stay script-src 'self'
         includeAssets: ['apple-touch-icon.png'],
         manifest: {
           name: 'Tech Assistant',

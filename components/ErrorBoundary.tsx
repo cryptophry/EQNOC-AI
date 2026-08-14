@@ -9,8 +9,6 @@ interface State {
   error?: Error;
 }
 
-// Top-level error boundary so a render-time throw (e.g. a malformed persisted
-// session) shows a recoverable panel instead of a blank white screen.
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -34,25 +32,24 @@ class ErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className="h-screen w-full bg-slate-950 text-slate-200 flex items-center justify-center p-6 font-mono">
-        <div className="max-w-md w-full jarvis-panel rounded-xl p-8 text-center">
-          <div className="text-red-400 font-display text-xl font-bold tracking-widest mb-2">
-            SYSTEM FAULT
-          </div>
-          <p className="text-sm text-slate-400 mb-6">
-            The interface hit an unexpected error and stopped. Your saved sessions and
+      <div className="h-screen w-full flex items-center justify-center p-6 bg-app text-ink">
+        <div className="max-w-md w-full bg-card border border-line rounded-xl2 p-8 text-center shadow-raised">
+          <div className="text-danger text-lg font-bold mb-2">Something went wrong</div>
+          <p className="text-sm text-muted mb-6">
+            The interface hit an unexpected error and stopped. Your saved chats and
             notes are untouched — reloading usually clears it.
           </p>
           {this.state.error?.message && (
-            <pre className="text-[11px] text-slate-500 bg-slate-950/60 border border-slate-800 rounded p-3 mb-6 overflow-auto text-left">
+            <pre className="text-[11px] text-faint bg-card-2 border border-line rounded p-3 mb-6 overflow-auto text-left font-mono">
               {this.state.error.message}
             </pre>
           )}
           <button
             onClick={this.handleReload}
-            className="w-full bg-cyan-600/10 hover:bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 rounded py-3 text-xs font-bold tracking-widest uppercase transition-all"
+            className="w-full text-white rounded-xl py-3 text-sm font-semibold"
+            style={{ background: 'linear-gradient(155deg, var(--accent-2), var(--accent) 60%, var(--accent-strong))' }}
           >
-            Reload Interface
+            Reload
           </button>
         </div>
       </div>

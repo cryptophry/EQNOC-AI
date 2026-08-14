@@ -20,7 +20,10 @@ const LoginScreen: React.FC<Props> = ({ onLogin }) => {
       await login(password);
       onLogin();
     } catch (err) {
-      setError(err instanceof AuthError ? 'Incorrect passcode — try again' : "Couldn't reach the server");
+      const msg = err instanceof AuthError
+        ? 'Incorrect passcode — try again'
+        : (err instanceof Error && err.message && !/^Login failed/.test(err.message) ? err.message : "Couldn't reach the server");
+      setError(msg);
       setIsLoading(false);
       setPassword('');
     }

@@ -3,7 +3,7 @@
 // vision model (transcribe + describe) and embeds the result into Upstash so the
 // assistant can answer questions about the photo later.
 
-import { getAuthToken, clearAuth } from './ai';
+import { clearAuth } from './ai';
 
 // Expired session -> clear the stale token and reload to the login screen.
 function handleAuthFailure(res: Response): void {
@@ -28,8 +28,7 @@ export interface PhotoRecord {
 }
 
 function authHeaders(): Record<string, string> {
-  const t = getAuthToken();
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  return { 'Content-Type': 'application/json' };
 }
 
 export async function listPhotos(): Promise<PhotoRecord[]> {

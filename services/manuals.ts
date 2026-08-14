@@ -4,7 +4,7 @@
 
 import * as pdfjsLib from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { getAuthToken, clearAuth } from './ai';
+import { clearAuth } from './ai';
 import { downscaleImage } from '../utils/image';
 
 // An expired session means every call here 401s. Rather than surfacing raw
@@ -49,8 +49,7 @@ export const categoryLabel = (key?: string): string =>
   CATEGORIES.find((c) => c.key === key)?.label || 'Other';
 
 function authHeaders(): Record<string, string> {
-  const t = getAuthToken();
-  return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+  return { 'Content-Type': 'application/json' };
 }
 
 export async function listManuals(): Promise<ManualRecord[]> {

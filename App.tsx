@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import {
   createChatSession, checkAiHealth, StreamChunk,
-  isAuthenticated as hasAuthToken, clearAuth, AuthError, refreshAuthToken,
+  isAuthenticated as hasAuthToken, clearAuth, AuthError, refreshAuthToken, logout,
 } from './services/ai';
 import { Message, MessageRole, Session } from './types';
 import {
   Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
-  FileText, ChevronRight, Loader2, ImageIcon,
+  FileText, ChevronRight, Loader2, ImageIcon, LogOut,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import SourcesPanel from './components/SourcesPanel';
 import LoginScreen from './components/LoginScreen';
 import CommandLibraryModal from './components/CommandLibraryModal';
+import SessionList from './components/SessionList';
 // Lazy — pulls in pdf.js only when a tech opens the manuals uploader.
 const ManualsModal = lazy(() => import('./components/ManualsModal'));
 const PhotosModal = lazy(() => import('./components/PhotosModal'));
@@ -19,6 +20,27 @@ import ReminderModal, { Reminder } from './components/ReminderModal';
 import { ingestPhotoFromDataUrl } from './services/photos';
 import { downscaleImage } from './utils/image';
 import { playAlertSound } from './utils/audio';
+
+const nid = () => {
+  try { return crypto.randomUUID(); } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+};
+
+const INIT_MSG = (): Message => ({
+  id: 'init', role: MessageRole.MODEL,
+  text: "Tech Assistant ready — desk or field, what are you working on?",
+  timestamp: new Date(),
+});
+
+const MAX_SESSIONS = 30;
+
+function messagesToHistory(msgs: Message[]) {
+  return msgs
+    .filter(m => (m.role === MessageRole.USER || m.role === MessageRole.MODEL) && m.id !== 'init')
+    .map(m => ({
+      role: m.role === MessageRole.USER ? 'user' : 'assistant',
+      content: m.text || '',
+    }));
+}
 
 const SUGGESTIONS = [
   'Interpret an OTDR or power reading',
@@ -40,9 +62,7 @@ const App: React.FC = () => {
   }, []);
 
   // Chat
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 'init', role: MessageRole.MODEL, text: "Tech Assistant ready — desk or field, what are you working on?", timestamp: new Date() },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([INIT_MSG()]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [attachment, setAttachment] = useState<{ base64: string; type: string } | null>(null);
@@ -80,20 +100,29 @@ const App: React.FC = () => {
   }, [reminders]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const next = reminders.filter(r => !r.fired).sort((a, b) => a.time - b.time)[0];
+    if (!next) return;
+    const delay = Math.min(Math.max(0, next.time - Date.now()), 2_147_000_000);
+    const t = setTimeout(() => {
       const now = Date.now();
-      let changed = false;
-      const updated = reminders.map(r => (!r.fired && r.time <= now ? (changed = true, { ...r, fired: true }) : r));
-      if (changed) { setReminders(updated); setHasUnreadAlarm(true); playAlertSound(); }
-    }, 1000);
-    return () => clearInterval(interval);
+      setReminders(prev => {
+        let firedAny = false;
+        const updated = prev.map(r => {
+          if (!r.fired && r.time <= now) { firedAny = true; return { ...r, fired: true }; }
+          return r;
+        });
+        if (firedAny) { setHasUnreadAlarm(true); playAlertSound(); }
+        return firedAny ? updated : prev;
+      });
+    }, delay);
+    return () => clearTimeout(t);
   }, [reminders]);
 
   const handleDismissAlarm = (id: string) => setReminders(prev => prev.filter(r => r.id !== id));
 
   // Sessions (chat history persistence)
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId] = useState<string>(() => Date.now().toString());
+  const [currentSessionId, setCurrentSessionId] = useState<string>(() => nid());
   const [sessionSaveFailed, setSessionSaveFailed] = useState(false);
 
   useEffect(() => {
@@ -109,9 +138,42 @@ const App: React.FC = () => {
   }, []);
 
   const persistSessions = (list: Session[]): boolean => {
-    const lean = list.map(s => ({ ...s, messages: s.messages.map(m => (m.images ? { ...m, images: undefined } : m)) }));
+    const lean = list
+      .slice(0, MAX_SESSIONS)
+      .map(s => ({ ...s, messages: s.messages.map(m => (m.images ? { ...m, images: undefined } : m)) }));
     try { localStorage.setItem('eqnoc_sessions', JSON.stringify(lean)); return true; }
     catch (e) { console.warn('session save failed (quota?)', e); return false; }
+  };
+
+  const openSession = (id: string) => {
+    const s = sessions.find(x => x.id === id);
+    if (!s) return;
+    chatSession.current?.abort();
+    setCurrentSessionId(s.id);
+    setMessages(s.messages.length ? s.messages : [INIT_MSG()]);
+    try { chatSession.current = createChatSession(messagesToHistory(s.messages)); } catch (e) { console.error(e); }
+  };
+
+  const newChat = () => {
+    chatSession.current?.abort();
+    setCurrentSessionId(nid());
+    setMessages([INIT_MSG()]);
+    try { chatSession.current = createChatSession(); } catch (e) { console.error(e); }
+  };
+
+  const deleteSession = (id: string) => {
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== id);
+      persistSessions(next);
+      return next;
+    });
+    if (id === currentSessionId) newChat();
+  };
+
+  const handleSignOut = async () => {
+    chatSession.current?.abort();
+    await logout();
+    setIsAuthenticated(false);
   };
 
   const saveCurrentSession = useCallback((msgs: Message[]) => {
@@ -144,17 +206,13 @@ const App: React.FC = () => {
 
   const appendMessage = (m: Message) => setMessages(prev => [...prev, m]);
 
-  const convertFileToBase64 = (file: File): Promise<string> => new Promise((res, rej) => {
-    const r = new FileReader(); r.readAsDataURL(file); r.onload = () => res(r.result as string); r.onerror = rej;
-  });
-
   // Downscale on attach so large photos don't blow past the serverless body
   // limit (413) when sent to the AI. Falls back to the raw image if it fails.
   const attachImage = async (file: File) => {
     try { setAttachment({ base64: await downscaleImage(file), type: 'image/jpeg' }); }
     catch (err) {
-      console.error('downscale failed, attaching raw', err);
-      try { setAttachment({ base64: await convertFileToBase64(file), type: file.type }); } catch (e2) { console.error(e2); }
+      console.error('downscale failed', err);
+      alert('Couldn’t read that image. Try a smaller JPEG or PNG.');
     }
   };
 
@@ -214,7 +272,7 @@ const App: React.FC = () => {
     }
 
     const userMsg: Message = {
-      id: Date.now().toString(), role: MessageRole.USER, text, timestamp: new Date(),
+      id: nid(), role: MessageRole.USER, text, timestamp: new Date(),
       images: currentAttachment ? [currentAttachment.base64] : undefined,
     };
     const withUser = [...messages, userMsg];
@@ -236,7 +294,7 @@ const App: React.FC = () => {
           ] })
         : await chatSession.current.sendMessageStream({ message: finalPrompt });
 
-      const botMsgId = (Date.now() + 1).toString();
+      const botMsgId = nid();
       streamingMsgId = botMsgId;
       const botMsg: Message = { id: botMsgId, role: MessageRole.MODEL, text: '', timestamp: new Date(), isStreaming: true };
       setMessages(prev => [...prev, botMsg]);
@@ -266,10 +324,24 @@ const App: React.FC = () => {
           if (fc.name === 'set_alarm') {
             const { message, type, timeValue } = args as { message: string; type: string; timeValue: string };
             let target = 0, display = '';
-            if (type === 'RELATIVE_MINUTES') { const mins = parseInt(timeValue, 10); target = Date.now() + mins * 60000; display = `in ${mins} minutes`; }
-            else if (type === 'ABSOLUTE_TIME') { const [h, m] = timeValue.split(':').map(Number); const dt = new Date(); dt.setHours(h, m, 0, 0); if (dt.getTime() < Date.now()) dt.setDate(dt.getDate() + 1); target = dt.getTime(); display = `at ${timeValue}`; }
+            if (type === 'RELATIVE_MINUTES') {
+              const mins = parseInt(timeValue, 10);
+              if (Number.isFinite(mins) && mins > 0 && mins < 24 * 60) {
+                target = Date.now() + mins * 60000;
+                display = `in ${mins} minutes`;
+              }
+            } else if (type === 'ABSOLUTE_TIME') {
+              const [h, m] = String(timeValue || '').split(':').map(Number);
+              if (Number.isFinite(h) && Number.isFinite(m) && h >= 0 && h < 24 && m >= 0 && m < 60) {
+                const dt = new Date();
+                dt.setHours(h, m, 0, 0);
+                if (dt.getTime() < Date.now()) dt.setDate(dt.getDate() + 1);
+                target = dt.getTime();
+                display = `at ${timeValue}`;
+              }
+            }
             if (target > 0) {
-              setReminders(prev => [...prev, { id: Date.now().toString(), text: message, time: target, fired: false }].sort((a, b) => a.time - b.time));
+              setReminders(prev => [...prev, { id: nid(), text: String(message || 'Reminder'), time: target, fired: false }].sort((a, b) => a.time - b.time));
               setHasUnreadAlarm(true);
               toolResult = `Reminder set for "${message}" ${display}.`;
             } else { toolResult = 'Could not parse the time.'; }
@@ -308,7 +380,7 @@ const App: React.FC = () => {
       if (error instanceof AuthError) { clearAuth(); setIsAuthenticated(false); setIsLoading(false); return; }
       console.error('AI API Error:', error);
       if (streamingMsgId) setMessages(prev => prev.map(m => (m.id === streamingMsgId ? { ...m, isStreaming: false } : m)));
-      appendMessage({ id: Date.now().toString(), role: MessageRole.SYSTEM, text: `Communication error. ${(error as Error)?.message || ''}`, timestamp: new Date() });
+      appendMessage({ id: nid(), role: MessageRole.SYSTEM, text: `Communication error. ${(error as Error)?.message || ''}`, timestamp: new Date() });
       checkAiHealth().then(h => setIsSystemOnline(h.ok && h.configured)).catch(() => setIsSystemOnline(false));
     } finally {
       setIsLoading(false);
@@ -354,6 +426,9 @@ const App: React.FC = () => {
             <span className={`w-2 h-2 rounded-full ${isSystemOnline ? 'bg-ok' : 'bg-danger'}`} style={isSystemOnline ? { boxShadow: '0 0 8px var(--ok)' } : {}} />
             {isSystemOnline ? 'System online' : 'Offline'}
           </div>
+          <button onClick={handleSignOut} className="w-9 h-9 grid place-items-center rounded-full border border-line bg-card hover:border-line-strong" aria-label="Sign out" title="Sign out">
+            <LogOut size={15} className="text-muted" />
+          </button>
         </div>
       </header>
 
@@ -430,6 +505,13 @@ const App: React.FC = () => {
 
         {/* Rail */}
         <aside className="flex flex-col gap-4">
+          <SessionList
+            sessions={sessions}
+            currentId={currentSessionId}
+            onOpen={openSession}
+            onNew={newChat}
+            onDelete={deleteSession}
+          />
           <div className="bg-card border border-line rounded-xl2 p-4">
             <h3 className="text-[12px] uppercase tracking-[0.6px] text-muted font-semibold mb-1">Quick tools</h3>
             <button onClick={() => setIsLibraryOpen(true)} className="w-full flex items-center gap-3 py-3 border-t border-line text-[14px] hover:text-accent transition-colors">

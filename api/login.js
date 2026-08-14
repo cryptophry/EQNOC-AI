@@ -1,13 +1,12 @@
 // Vercel serverless function: POST /api/login
-// Verifies the shared app password (server-side) and returns a signed token.
-// The password never lives in the client bundle — the browser only holds the
-// short-lived token this endpoint returns.
-//
-// Env vars:
-//   APP_PASSWORD - required, the shared login password
-//   AUTH_SECRET  - optional, HMAC signing secret (falls back to APP_PASSWORD)
+// Verifies the shared app password (server-side) and sets an HttpOnly session cookie.
+// The password never lives in the client bundle — the browser only holds a
+// non-secret "signed in" flag; the token itself is not readable by JS.
 
-import { signToken, signingSecret, passwordMatches, verifyToken, rateLimit, clientIp } from '../lib/auth.js';
+import {
+  signToken, signingSecret, passwordMatches, parseToken, shouldRenew,
+  rateLimit, clientIp, tokenFromRequest, sessionCookie,
+} from '../lib/auth.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,12 +18,9 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'APP_PASSWORD is not configured on the server' });
     return;
   }
-
-  // Throttle brute-force attempts per IP.
-  const ip = clientIp(req);
-  const rl = rateLimit(`login:${ip}`, { windowMs: 60_000, max: 10 });
-  if (!rl.allowed) {
-    res.status(429).json({ error: 'Too many attempts. Wait a minute and try again.' });
+  const secret = signingSecret();
+  if (!secret) {
+    res.status(500).json({ error: 'AUTH_SECRET is not configured on the server' });
     return;
   }
 
@@ -33,17 +29,33 @@ export default async function handler(req, res) {
     try { body = JSON.parse(body); } catch { body = null; }
   }
   const password = body && typeof body.password === 'string' ? body.password : '';
-  const existing = body && typeof body.token === 'string' ? body.token : '';
+  const wantRefresh = !!(body && body.refresh);
 
-  // Silent renewal: a still-valid token can be exchanged for a fresh one, so
-  // active devices never hit expiry mid-use. Expired/invalid tokens (or no
-  // token) require the password as before.
-  if (!password && existing) {
-    if (verifyToken(signingSecret(), existing)) {
-      res.status(200).json({ token: signToken(signingSecret()) });
-    } else {
-      res.status(401).json({ error: 'Session expired. Please sign in again.' });
+  // Throttle password guesses only — silent cookie refresh must not share the bucket.
+  if (!wantRefresh) {
+    const ip = clientIp(req);
+    const rl = rateLimit(`login:${ip}`, { windowMs: 60_000, max: 10 });
+    if (!rl.allowed) {
+      res.status(429).json({ error: 'Too many attempts. Wait a minute and try again.' });
+      return;
     }
+  }
+
+  // Silent renewal: a still-valid cookie can be exchanged for a fresh one
+  // only when it is inside the last week of its TTL. Absolute lifetime is
+  // capped at 90 days from first issue (iat is preserved across renewals).
+  if (wantRefresh || (!password && tokenFromRequest(req))) {
+    const parsed = parseToken(secret, tokenFromRequest(req));
+    if (!parsed) {
+      res.setHeader('Set-Cookie', sessionCookie('', { clear: true }));
+      res.status(401).json({ error: 'Session expired. Please sign in again.' });
+      return;
+    }
+    if (shouldRenew(parsed)) {
+      const token = signToken(secret, { iat: parsed.iat });
+      res.setHeader('Set-Cookie', sessionCookie(token));
+    }
+    res.status(200).json({ ok: true });
     return;
   }
 
@@ -52,6 +64,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const token = signToken(signingSecret());
-  res.status(200).json({ token });
+  const token = signToken(secret);
+  res.setHeader('Set-Cookie', sessionCookie(token));
+  res.status(200).json({ ok: true });
 }

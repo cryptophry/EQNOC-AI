@@ -1,35 +1,23 @@
 // Vercel serverless function: proxies AI calls to OpenRouter.
 // The OpenRouter API key lives ONLY here (server-side env var), never in the browser.
 //
-// Hardening (Phase 1):
-//   - Requires a valid auth token (from POST /api/login) on every AI request
-//   - Ignores the client's requested model — the model is fixed server-side
-//   - Clamps max_tokens and caps message count / payload size
+// Trust boundary:
+//   - Requires a valid session (HttpOnly cookie, or legacy Bearer token)
+//   - Ignores client model / tools; both are fixed server-side
+//   - Strips client system messages; injects the knowledge base itself
+//   - Always sets max_tokens; only accepts data: image URLs
 //   - Aborts the upstream request on timeout or client disconnect
 //   - Best-effort per-IP rate limiting
-//
-// Model routing: one vision-capable model (Grok 4.6) handles both text and
-// image turns by default, so a pasted photo is answered by the same model that
-// answers everything else. The split is kept as a mechanism — set
-// OPENROUTER_VISION_MODEL to route image turns to a cheaper vision model
-// (e.g. anthropic/claude-haiku-4.5) without touching the text model.
-//
-// Env vars:
-//   OPENROUTER_API_KEY    - required
-//   OPENROUTER_MODEL      - optional text model, defaults to x-ai/grok-4.6
-//   OPENROUTER_VISION_MODEL - optional model for turns containing an image
-//                             (and for ingestion OCR), defaults to x-ai/grok-4.6
-//   APP_PASSWORD          - required (used to sign/verify auth tokens; see lib/auth.js)
-//   AUTH_SECRET           - optional, HMAC signing secret (falls back to APP_PASSWORD)
 
-import { verifyToken, signingSecret, bearerFromRequest, rateLimit, clientIp } from '../lib/auth.js';
+import { verifyToken, signingSecret, tokenFromRequest, rateLimit, clientIp, bodyByteLength } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
 import { vectorConfigured, queryChunks, getTitleMap } from '../lib/vectorStore.js';
+import { CHAT_TOOLS } from '../lib/chatTools.js';
+import { sanitizeMessages } from '../lib/sanitizeMessages.js';
 
 const RETRIEVE_TOP_K = 6;
-const RETRIEVE_MIN_SCORE = 0.35; // ignore weak matches so general chat isn't polluted
+const RETRIEVE_MIN_SCORE = 0.35;
 
-// Pull the latest user question text out of the messages (handles multimodal content).
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -42,16 +30,11 @@ function lastUserText(messages) {
   return '';
 }
 
-// Query the manual store; returns { prompt, sources } — the prompt is injected
-// into the system message, and the structured sources are streamed to the client
-// so the tech can verify the answer against the original wording.
 async function retrieveManualContext(messages) {
   const query = lastUserText(messages).trim();
   if (!query) return null;
   let hits, titleMap;
   try {
-    // Titles are resolved from the manifests (in parallel) so renames apply
-    // immediately without rewriting per-chunk metadata.
     [hits, titleMap] = await Promise.all([queryChunks(query, RETRIEVE_TOP_K), getTitleMap()]);
   } catch (e) {
     console.warn('manual retrieval failed', e.message);
@@ -83,17 +66,24 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'x-ai/grok-4.6';
 const DEFAULT_VISION_MODEL = 'x-ai/grok-4.6';
 
-// True if any message carries image content (OpenAI-format image_url parts).
 function hasImageContent(messages) {
   return Array.isArray(messages) && messages.some(
     (m) => Array.isArray(m?.content) && m.content.some((p) => p?.type === 'image_url')
   );
 }
 
-// Guardrails
-const MAX_OUTPUT_TOKENS = 8000;    // server ceiling for max_tokens
-const MAX_MESSAGES = 100;          // conversation length cap per request
-const MAX_BODY_BYTES = 6 * 1024 * 1024; // ~6MB (allows a couple of pasted images)
+function referer() {
+  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (prod) return prod.startsWith('http') ? prod : `https://${prod}`;
+  const url = process.env.VERCEL_URL;
+  if (url) return `https://${url}`;
+  return 'https://eqnoc-ai.vercel.app';
+}
+
+const MAX_OUTPUT_TOKENS = 8000;
+const DEFAULT_OUTPUT_TOKENS = 4000;
+const MAX_MESSAGES = 100;
+const MAX_BODY_BYTES = 6 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 90_000;
 
 export default async function handler(req, res) {
@@ -101,9 +91,13 @@ export default async function handler(req, res) {
   const textModel = process.env.OPENROUTER_MODEL || DEFAULT_MODEL;
   const visionModel = process.env.OPENROUTER_VISION_MODEL || DEFAULT_VISION_MODEL;
 
-  // Health check used by the UI's ONLINE/OFFLINE indicator (public, no secrets).
   if (req.method === 'GET') {
-    res.status(200).json({ ok: true, configured: !!apiKey, authRequired: true });
+    res.status(200).json({
+      ok: true,
+      configured: !!apiKey,
+      authRequired: true,
+      rag: vectorConfigured(),
+    });
     return;
   }
 
@@ -117,14 +111,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  // --- Auth gate ---
-  const token = bearerFromRequest(req);
+  const token = tokenFromRequest(req);
   if (!verifyToken(signingSecret(), token)) {
     res.status(401).json({ error: 'Unauthorized. Please sign in again.' });
     return;
   }
 
-  // --- Rate limit (per IP, best-effort) ---
   const ip = clientIp(req);
   const rl = rateLimit(`ai:${ip}`, { windowMs: 60_000, max: 60 });
   if (!rl.allowed) {
@@ -132,58 +124,55 @@ export default async function handler(req, res) {
     return;
   }
 
-  // --- Parse + validate body ---
   let raw = req.body;
+  if (bodyByteLength(raw) > MAX_BODY_BYTES) {
+    res.status(413).json({ error: 'Request too large' });
+    return;
+  }
   let body = raw;
   if (typeof raw === 'string') {
-    if (Buffer.byteLength(raw, 'utf8') > MAX_BODY_BYTES) {
-      res.status(413).json({ error: 'Request too large' });
-      return;
-    }
     try { body = JSON.parse(raw); } catch { body = null; }
   }
   if (!body || !Array.isArray(body.messages)) {
     res.status(400).json({ error: 'Request body must include a messages array' });
     return;
   }
-  if (body.messages.length > MAX_MESSAGES) {
+
+  const messagesIn = sanitizeMessages(body.messages);
+  if (messagesIn.length === 0) {
+    res.status(400).json({ error: 'No valid messages' });
+    return;
+  }
+  if (messagesIn.length > MAX_MESSAGES) {
     res.status(413).json({ error: `Too many messages (max ${MAX_MESSAGES})` });
     return;
   }
 
-  // --- Inject the knowledge-base system prompt server-side when requested ---
-  // (chat sessions set useKnowledgeBase; one-shot utility calls don't need it.)
-  let messages = body.messages;
-  let retrievedSources = null; // structured excerpts, streamed to the client for verification
+  let messages = messagesIn;
+  let retrievedSources = null;
   if (body.useKnowledgeBase) {
     const systemParts = [EQNOC_KNOWLEDGE_BASE];
-    // Retrieve relevant manual excerpts (RAG) if the manual store is configured.
     if (vectorConfigured()) {
-      const manualCtx = await retrieveManualContext(body.messages);
+      const manualCtx = await retrieveManualContext(messagesIn);
       if (manualCtx) { systemParts.push(manualCtx.prompt); retrievedSources = manualCtx.sources; }
     }
-    messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messages];
+    messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messagesIn];
   }
 
-  // --- Pick the model server-side: upgrade to the vision model only when the
-  // request actually contains an image (clients never choose the model). ---
-  const model = hasImageContent(body.messages) ? visionModel : textModel;
+  const model = hasImageContent(messagesIn) ? visionModel : textModel;
+  const requested = typeof body.max_tokens === 'number' ? body.max_tokens : DEFAULT_OUTPUT_TOKENS;
 
-  // --- Build payload: model is server-controlled, max_tokens clamped ---
   const payload = {
     model,
     messages,
     stream: !!body.stream,
+    max_tokens: Math.max(1, Math.min(MAX_OUTPUT_TOKENS, requested)),
   };
-  if (Array.isArray(body.tools) && body.tools.length > 0) payload.tools = body.tools;
+  if (body.useKnowledgeBase) payload.tools = CHAT_TOOLS;
   if (typeof body.temperature === 'number') {
     payload.temperature = Math.max(0, Math.min(2, body.temperature));
   }
-  if (typeof body.max_tokens === 'number') {
-    payload.max_tokens = Math.max(1, Math.min(MAX_OUTPUT_TOKENS, body.max_tokens));
-  }
 
-  // --- Upstream request with timeout + client-disconnect abort ---
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   const onClose = () => controller.abort();
@@ -196,7 +185,7 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://noc-assistant.com',
+        'HTTP-Referer': referer(),
         'X-Title': 'NOC Assistant',
       },
       body: JSON.stringify(payload),
@@ -226,8 +215,6 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
-    // Emit the retrieved sources first, as a custom SSE event — clients that
-    // don't know about it skip it (no choices/delta), newer clients render it.
     if (retrievedSources && retrievedSources.length > 0) {
       res.write(`data: ${JSON.stringify({ sources: retrievedSources })}\n\n`);
     }
@@ -239,7 +226,7 @@ export default async function handler(req, res) {
         res.write(Buffer.from(value));
       }
     } catch {
-      // client disconnect or upstream abort — stop quietly
+      // client disconnect or upstream abort
     } finally {
       clearTimeout(timeout);
       req.off?.('close', onClose);

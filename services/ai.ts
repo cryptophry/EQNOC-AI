@@ -7,15 +7,22 @@ import { SourceExcerpt } from "../types";
 
 const API_URL = '/api/ai';
 const LOGIN_URL = '/api/login';
-const TOKEN_KEY = 'eqnoc_auth_token';
+const LOGOUT_URL = '/api/logout';
+const SIGNED_IN_KEY = 'eqnoc_signed_in';
 
-// --- Auth token handling ---
-// The token is issued by /api/login after a server-side password check and sent
-// as a Bearer header on every AI request. It's kept in memory and mirrored to
-// localStorage so a page reload doesn't force re-login.
+// The session token is an HttpOnly cookie set by /api/login. The browser only
+// stores a non-secret flag so a reload can skip the login screen; JS never
+// holds the token (so XSS cannot exfiltrate it).
 
-let authToken: string | null = null;
-try { authToken = localStorage.getItem(TOKEN_KEY); } catch {}
+function readSignedIn(): boolean {
+  try { return localStorage.getItem(SIGNED_IN_KEY) === '1'; } catch { return false; }
+}
+function writeSignedIn(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(SIGNED_IN_KEY, '1');
+    else localStorage.removeItem(SIGNED_IN_KEY);
+  } catch { /* ignore */ }
+}
 
 export class AuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -24,48 +31,40 @@ export class AuthError extends Error {
   }
 }
 
-export function getAuthToken(): string | null {
-  return authToken;
-}
-
 export function isAuthenticated(): boolean {
-  return !!authToken;
+  return readSignedIn();
 }
 
 export function clearAuth(): void {
-  authToken = null;
-  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+  writeSignedIn(false);
+  try { localStorage.removeItem('eqnoc_auth_token'); } catch { /* leftover from pre-cookie auth */ }
 }
 
-// Silent session renewal: exchange a still-valid token for a fresh one so an
-// actively-used device never expires mid-shift. Returns false when the token
-// is already expired/invalid — the caller should send the user to the login
-// screen. Network failures leave the current token untouched (offline-safe).
+export async function logout(): Promise<void> {
+  try { await fetch(LOGOUT_URL, { method: 'POST' }); } catch { /* ignore */ }
+  clearAuth();
+}
+
+// Silent session renewal: the cookie is sent automatically. Returns false when
+// the session is expired/invalid. Network failures leave the flag untouched
+// (offline-safe).
 export async function refreshAuthToken(): Promise<boolean> {
-  if (!authToken) return false;
+  if (!readSignedIn()) return false;
   let res: Response;
   try {
     res = await fetch(LOGIN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: authToken }),
+      body: JSON.stringify({ refresh: true }),
     });
   } catch {
-    return true; // offline — keep the existing token and carry on
+    return true;
   }
   if (res.status === 401) { clearAuth(); return false; }
-  if (!res.ok) return true; // server hiccup — keep the existing token
-  try {
-    const data = await res.json();
-    if (data.token) {
-      authToken = data.token;
-      try { localStorage.setItem(TOKEN_KEY, data.token); } catch { /* ignore */ }
-    }
-  } catch { /* keep existing token */ }
+  if (!res.ok) return true;
   return true;
 }
 
-// Verify a password against the server and store the returned token.
 export async function login(password: string): Promise<void> {
   const res = await fetch(LOGIN_URL, {
     method: 'POST',
@@ -75,13 +74,10 @@ export async function login(password: string): Promise<void> {
   if (res.status === 401) throw new AuthError('Invalid credentials');
   if (!res.ok) {
     let detail = '';
-    try { detail = (await res.json()).error || ''; } catch {}
+    try { detail = (await res.json()).error || ''; } catch { /* ignore */ }
     throw new Error(detail || `Login failed (${res.status})`);
   }
-  const data = await res.json();
-  if (!data.token) throw new Error('Login response missing token');
-  authToken = data.token;
-  try { localStorage.setItem(TOKEN_KEY, data.token); } catch {}
+  writeSignedIn(true);
 }
 
 // --- Types (unchanged from the Gemini version) ---
@@ -98,12 +94,9 @@ export interface StreamChunk {
 // --- Low-level helpers ---
 
 async function callApi(body: any, signal?: AbortSignal): Promise<Response> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
   const res = await fetch(API_URL, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   });
@@ -157,61 +150,6 @@ export async function checkAiHealth(): Promise<{ ok: boolean; configured: boolea
     return { ok: false, configured: false };
   }
 }
-
-// --- Chat session with tool calling (OpenAI/OpenRouter format) ---
-
-const CHAT_TOOLS = [
-  {
-    type: 'function',
-    function: {
-      name: 'set_alarm',
-      description: 'Set a reminder or alarm for a specific time.',
-      parameters: {
-        type: 'object',
-        properties: {
-          message: { type: 'string', description: 'The reminder text.' },
-          type: { type: 'string', enum: ['RELATIVE_MINUTES', 'ABSOLUTE_TIME'] },
-          timeValue: { type: 'string', description: 'Minutes (e.g., "15") or Time (e.g., "14:30").' }
-        },
-        required: ['message', 'type', 'timeValue']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'calculate_optical_budget',
-      description: 'Calculate fiber optical loss budget.',
-      parameters: {
-        type: 'object',
-        properties: {
-          txPower: { type: 'number' },
-          rxSensitivity: { type: 'number' },
-          distance: { type: 'number' },
-          wavelength: { type: 'string' },
-          connectorCount: { type: 'number' },
-          spliceCount: { type: 'number' }
-        },
-        required: ['txPower', 'rxSensitivity', 'distance']
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_notes',
-      description: 'Update the persistent scratchpad notes.',
-      parameters: {
-        type: 'object',
-        properties: {
-          content: { type: 'string' },
-          mode: { type: 'string', enum: ['APPEND', 'OVERWRITE'] }
-        },
-        required: ['content']
-      }
-    }
-  }
-];
 
 // Message inputs App.tsx passes to sendMessageStream — kept Gemini-shaped for
 // compatibility: a plain string, an array of parts ({text} | {inlineData}),
@@ -299,7 +237,7 @@ export class ChatSession {
 
     this.abortController = new AbortController();
     const res = await callApi(
-      { messages: this.history, tools: CHAT_TOOLS, stream: true, useKnowledgeBase: true },
+      { messages: this.history, stream: true, useKnowledgeBase: true },
       this.abortController.signal
     );
 

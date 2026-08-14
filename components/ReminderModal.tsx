@@ -39,7 +39,8 @@ const ReminderModal: React.FC<Props> = ({ reminders, onClose, onAdd, onDelete })
     } else {
       target = Date.now() + relativeMin * 60000;
     }
-    onAdd({ id: Date.now().toString(), text: inputText, time: target, fired: false });
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    onAdd({ id, text: inputText, time: target, fired: false });
     setInputText('');
   };
 

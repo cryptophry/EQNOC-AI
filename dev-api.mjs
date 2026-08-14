@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import aiHandler from './api/ai.js';
 import loginHandler from './api/login.js';
+import logoutHandler from './api/logout.js';
 import manualsHandler from './api/manuals.js';
 import photosHandler from './api/photos.js';
 
@@ -22,6 +23,7 @@ const PORT = process.env.API_PORT || 8787;
 const routes = {
   '/api/ai': aiHandler,
   '/api/login': loginHandler,
+  '/api/logout': logoutHandler,
   '/api/manuals': manualsHandler,
   '/api/photos': photosHandler,
 };
