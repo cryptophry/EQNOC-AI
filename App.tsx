@@ -7,6 +7,7 @@ import { Message, MessageRole, Session } from './types';
 import {
   Activity, Send, Paperclip, X, Bell, BookOpen, BookText, StickyNote,
   FileText, ChevronRight, Loader2, ImageIcon, LogOut, User, AlertTriangle,
+  Calculator, Mic, Copy, Check, MapPin, ClipboardList,
 } from 'lucide-react';
 import MessageContent from './components/MessageContent';
 import SourcesPanel from './components/SourcesPanel';
@@ -17,9 +18,12 @@ import SessionList from './components/SessionList';
 const ManualsModal = lazy(() => import('./components/ManualsModal'));
 const PhotosModal = lazy(() => import('./components/PhotosModal'));
 import ReminderModal, { Reminder } from './components/ReminderModal';
+import FieldKitModal from './components/FieldKitModal';
 import { ingestPhotoFromDataUrl } from './services/photos';
 import { downscaleImage } from './utils/image';
 import { playAlertSound } from './utils/audio';
+import { opticalBudget as calcOptical } from './utils/fieldKit';
+import { canDictate, startDictation } from './utils/speech';
 
 const nid = () => {
   try { return crypto.randomUUID(); } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
@@ -48,6 +52,7 @@ const SUGGESTIONS = [
   'Safety check for a site job',
   'Draft a job or defect report',
   'Explain a Cisco vs Juniper command',
+  'Draft a job handover I can paste into a ticket',
 ];
 
 const App: React.FC = () => {
@@ -86,6 +91,15 @@ const App: React.FC = () => {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isManualsOpen, setIsManualsOpen] = useState(false);
   const [isPhotosOpen, setIsPhotosOpen] = useState(false);
+  const [isKitOpen, setIsKitOpen] = useState(false);
+  const [site, setSite] = useState(() => { try { return localStorage.getItem('eqnoc_site') || ''; } catch { return ''; } });
+  const saveSite = (v: string) => {
+    setSite(v);
+    try { localStorage.setItem('eqnoc_site', v); } catch { /* ignore */ }
+  };
+  const [listening, setListening] = useState(false);
+  const stopListen = useRef<(() => void) | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Reminders / alarms
   const [reminders, setReminders] = useState<Reminder[]>(() => {
@@ -196,12 +210,13 @@ const App: React.FC = () => {
   // Init chat session
   useEffect(() => {
     try { chatSession.current = createChatSession(); } catch (e) { console.error('init chat', e); }
+    return () => { stopListen.current?.(); };
   }, []);
 
   const scrollToBottom = () => requestAnimationFrame(() => { if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight; });
 
   const getSystemStateContext = () => {
-    return `[SYSTEM STATE]\n- Scratchpad notes: ${notes ? `"${notes.slice(0, 1000)}"` : 'empty'}\n[/SYSTEM STATE]`;
+    return `[SYSTEM STATE]\n- Current site/job: ${site.trim() ? `"${site.trim()}"` : '(not set)'}\n- Scratchpad notes: ${notes ? `"${notes.slice(0, 1000)}"` : 'empty'}\n[/SYSTEM STATE]`;
   };
 
   const appendMessage = (m: Message) => setMessages(prev => [...prev, m]);
@@ -236,21 +251,40 @@ const App: React.FC = () => {
     }
   };
 
-  // Optical budget calculator (pure)
-  const opticalBudget = (a: Record<string, number | string>) => {
-    const txPower = Number(a.txPower), rxSensitivity = Number(a.rxSensitivity), distance = Number(a.distance);
-    const wavelength = String(a.wavelength ?? '1310');
-    const connectorCount = Number(a.connectorCount ?? 2), spliceCount = Number(a.spliceCount ?? 2), safetyMargin = Number(a.safetyMargin ?? 3);
-    const attenuation = wavelength === '1550' ? 0.25 : wavelength === '850' ? 3.0 : 0.35;
-    const fiberLoss = distance * attenuation;
-    const passiveLoss = connectorCount * 0.5 + spliceCount * 0.1;
-    const totalLoss = fiberLoss + passiveLoss;
-    const estRx = txPower - totalLoss;
-    const margin = estRx - rxSensitivity - safetyMargin;
-    return {
-      fiberLoss: +fiberLoss.toFixed(2), passiveLoss: +passiveLoss.toFixed(2), totalLinkLoss: +totalLoss.toFixed(2),
-      estimatedRxPower: +estRx.toFixed(2), margin: +margin.toFixed(2), status: margin >= 0 ? 'PASS' : 'FAIL', wavelength, distance,
-    };
+  const opticalBudget = (a: Record<string, number | string>) => calcOptical({
+    txPower: Number(a.txPower),
+    rxSensitivity: Number(a.rxSensitivity),
+    distance: Number(a.distance),
+    wavelength: a.wavelength != null ? String(a.wavelength) : undefined,
+    connectorCount: a.connectorCount != null ? Number(a.connectorCount) : undefined,
+    spliceCount: a.spliceCount != null ? Number(a.spliceCount) : undefined,
+  });
+
+  const copyMessage = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch { /* ignore */ }
+  };
+
+  const toggleListen = () => {
+    if (listening) {
+      stopListen.current?.();
+      stopListen.current = null;
+      setListening(false);
+      return;
+    }
+    if (!canDictate()) return;
+    const seed = input.replace(/\s+$/, '');
+    setListening(true);
+    stopListen.current = startDictation((text, done) => {
+      setInput(text ? (seed ? seed + ' ' + text : text) : seed);
+      if (done) {
+        setListening(false);
+        stopListen.current = null;
+      }
+    });
   };
 
   const processMessage = async (text: string) => {
@@ -390,6 +424,10 @@ const App: React.FC = () => {
   const handleSend = () => { processMessage(input); };
   const handleExplainCommand = (cmd: string, ctx: string) => { setIsLibraryOpen(false); processMessage(`Explain the ${ctx} command: "${cmd}".`); };
   const handleSimulateCommand = (cmd: string, ctx: string) => { setIsLibraryOpen(false); processMessage(`Show simulated CLI output for the ${ctx} command: "${cmd}".`); };
+  const handleHandover = () => {
+    const where = site.trim() ? ` Site/job: ${site.trim()}.` : '';
+    processMessage(`Draft a concise job handover I can paste into a ticket.${where} Use: site/asset, what was done, readings (before/after), outstanding, who to tell. Use only facts from this conversation and the scratchpad. If something is unknown, leave a blank.`);
+  };
 
   if (!isAuthenticated) return <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
 
@@ -475,7 +513,7 @@ const App: React.FC = () => {
                           ? <AlertTriangle size={15} />
                           : <Activity size={15} strokeWidth={2.3} />}
                     </div>
-                    <div className={`max-w-[88%] sm:max-w-[84%] rounded-[18px] px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13.5px] sm:text-[14.5px] leading-[1.55] ${
+                    <div className={`relative max-w-[88%] sm:max-w-[84%] rounded-[18px] px-3.5 py-2.5 sm:px-4 sm:py-3 text-[13.5px] sm:text-[14.5px] leading-[1.55] ${
                       msg.role === MessageRole.USER ? 'text-white' : msg.role === MessageRole.SYSTEM ? 'bg-danger/10 border border-danger/20 text-danger' : 'bg-card-2/90 border border-line'
                     }`} style={msg.role === MessageRole.USER ? { background: 'linear-gradient(160deg, var(--accent-2), var(--accent) 70%)' } : {}}>
                       {msg.role === MessageRole.USER
@@ -483,6 +521,15 @@ const App: React.FC = () => {
                         : <>
                             <MessageContent text={msg.text} isStreaming={msg.isStreaming} images={msg.images} />
                             {msg.role === MessageRole.MODEL && !msg.isStreaming && msg.sources && <SourcesPanel sources={msg.sources} />}
+                            {msg.role === MessageRole.MODEL && !msg.isStreaming && msg.text && (
+                              <button
+                                onClick={() => copyMessage(msg.id, msg.text)}
+                                className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold text-faint hover:text-accent"
+                              >
+                                {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                                {copiedId === msg.id ? 'Copied' : 'Copy'}
+                              </button>
+                            )}
                           </>}
                     </div>
                   </div>
@@ -510,6 +557,16 @@ const App: React.FC = () => {
             )}
             <div className="flex items-end gap-2 bg-card-solid border border-line-strong rounded-[18px] pl-2 pr-1.5 py-1.5 focus-ring transition-shadow">
               <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl text-muted hover:text-accent hover:bg-card-2 transition-colors" aria-label="Attach image"><Paperclip size={18} /></button>
+              {canDictate() && (
+                <button
+                  onClick={toggleListen}
+                  className={`p-2.5 rounded-xl transition-colors ${listening ? 'text-danger bg-danger/10' : 'text-muted hover:text-accent hover:bg-card-2'}`}
+                  aria-label={listening ? 'Stop dictation' : 'Dictate'}
+                  title={listening ? 'Listening… tap to stop' : 'Dictate'}
+                >
+                  <Mic size={18} />
+                </button>
+              )}
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/*" />
               <input
                 type="text" value={input} onChange={e => setInput(e.target.value)}
@@ -535,7 +592,29 @@ const App: React.FC = () => {
             onDelete={deleteSession}
           />
           <div className="glass-panel rounded-xl2 p-3">
+            <h3 className="text-[11px] uppercase tracking-[0.08em] text-muted font-semibold px-2 mb-1.5">On site</h3>
+            <label className="flex items-center gap-2 mx-1 mb-3 bg-card-2 border border-line rounded-xl px-2.5 py-2 focus-ring">
+              <MapPin size={14} className="text-faint shrink-0" />
+              <input
+                value={site}
+                onChange={e => saveSite(e.target.value)}
+                placeholder="Site / asset ID"
+                aria-label="Current site or asset"
+                className="flex-1 bg-transparent outline-none text-[13.5px] text-ink placeholder:text-faint min-w-0"
+              />
+            </label>
             <h3 className="text-[11px] uppercase tracking-[0.08em] text-muted font-semibold px-2 mb-1">Tools</h3>
+            <button onClick={() => setIsKitOpen(true)} className="tool-row">
+              <span className="tool-well"><Calculator size={15} /></span>
+              <span className="flex-1">Field kit</span>
+              <span className="text-[10.5px] text-faint">offline</span>
+              <ChevronRight size={15} className="text-faint" />
+            </button>
+            <button onClick={handleHandover} className="tool-row" disabled={isLoading}>
+              <span className="tool-well"><ClipboardList size={15} /></span>
+              <span className="flex-1">Draft handover</span>
+              <ChevronRight size={15} className="text-faint" />
+            </button>
             <button onClick={() => setIsLibraryOpen(true)} className="tool-row">
               <span className="tool-well"><BookOpen size={15} /></span>
               <span className="flex-1">Command library</span>
@@ -565,6 +644,7 @@ const App: React.FC = () => {
       {isManualsOpen && <Suspense fallback={null}><ManualsModal onClose={() => setIsManualsOpen(false)} /></Suspense>}
       {isPhotosOpen && <Suspense fallback={null}><PhotosModal onClose={() => setIsPhotosOpen(false)} /></Suspense>}
       {isReminderOpen && <ReminderModal reminders={reminders} onClose={() => setIsReminderOpen(false)} onAdd={(r) => setReminders(prev => [...prev, r].sort((a, b) => a.time - b.time))} onDelete={handleDismissAlarm} />}
+      {isKitOpen && <FieldKitModal onClose={() => setIsKitOpen(false)} />}
 
       {isNotesOpen && (
         <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setIsNotesOpen(false)}>
