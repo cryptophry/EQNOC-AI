@@ -175,7 +175,7 @@ const SessionList: React.FC<Props> = ({ sessions, currentId, onOpen, onNew, onDe
                       openMenu(s.id, e.currentTarget);
                     }}
                     className={`px-2 text-faint hover:text-ink transition-opacity ${
-                      menuId === s.id
+                      menuId === s.id || on
                         ? 'opacity-100'
                         : 'opacity-70 sm:opacity-0 sm:group-hover:opacity-100'
                     }`}
