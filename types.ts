@@ -28,6 +28,8 @@ export interface Message {
 export interface Session {
   id: string;
   title: string;
+  /** True once the user has named this chat. Auto-snippet titles are not overwritten. */
+  customTitle?: boolean;
   timestamp: number;
   messages: Message[];
 }

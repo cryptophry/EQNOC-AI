@@ -24,6 +24,7 @@ import { downscaleImage } from './utils/image';
 import { playAlertSound } from './utils/audio';
 import { opticalBudget as calcOptical } from './utils/fieldKit';
 import { canDictate, startDictation } from './utils/speech';
+import { parseCustomTitle, titleForSave } from './utils/sessionTitle';
 
 const nid = () => {
   try { return crypto.randomUUID(); } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
@@ -184,6 +185,16 @@ const App: React.FC = () => {
     if (id === currentSessionId) newChat();
   };
 
+  const renameSession = (id: string, name: string) => {
+    const title = parseCustomTitle(name);
+    if (!title) return;
+    setSessions(prev => {
+      const next = prev.map(s => (s.id === id ? { ...s, title, customTitle: true } : s));
+      persistSessions(next);
+      return next;
+    });
+  };
+
   const handleSignOut = async () => {
     chatSession.current?.abort();
     await logout();
@@ -192,11 +203,17 @@ const App: React.FC = () => {
 
   const saveCurrentSession = useCallback((msgs: Message[]) => {
     if (msgs.length <= 1 && msgs[0]?.id === 'init') return;
-    const firstUser = msgs.slice().reverse().find(m => m.role === MessageRole.USER);
-    const title = firstUser ? (firstUser.text.length > 40 ? firstUser.text.slice(0, 40) + '…' : firstUser.text) : 'Triage session';
     setSessions(prev => {
       const idx = prev.findIndex(s => s.id === currentSessionId);
-      const updated: Session = { id: currentSessionId, title, timestamp: Date.now(), messages: msgs };
+      const existing = idx >= 0 ? prev[idx] : undefined;
+      const { title, customTitle } = titleForSave(msgs, existing);
+      const updated: Session = {
+        id: currentSessionId,
+        title,
+        timestamp: Date.now(),
+        messages: msgs,
+        ...(customTitle ? { customTitle: true } : {}),
+      };
       const next = idx >= 0 ? prev.map((s, i) => (i === idx ? updated : s)) : [updated, ...prev];
       setSessionSaveFailed(!persistSessions(next));
       return next;
@@ -590,6 +607,7 @@ const App: React.FC = () => {
             onOpen={openSession}
             onNew={newChat}
             onDelete={deleteSession}
+            onRename={renameSession}
           />
           <div className="glass-panel rounded-xl2 p-3">
             <h3 className="text-[11px] uppercase tracking-[0.08em] text-muted font-semibold px-2 mb-1.5">On site</h3>
