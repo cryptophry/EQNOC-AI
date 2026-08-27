@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, MessageSquarePlus, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { Session } from '../types';
 import { displayTitle } from '../utils/sessionTitle';
@@ -192,32 +193,34 @@ const SessionList: React.FC<Props> = ({ sessions, currentId, onOpen, onNew, onDe
         </ul>
       )}
 
-      {menuId && menuPos && menuSession && (
-        <div
-          ref={menuRef}
-          role="menu"
-          className="fixed z-50 w-[164px] py-1 rounded-xl border border-line bg-card-solid shadow-panel"
-          style={{ top: menuPos.top, left: menuPos.left }}
-        >
-          <button
-            role="menuitem"
-            onClick={() => startRename(menuSession)}
-            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-ink hover:bg-card-2 transition-colors"
+      {menuId && menuPos && menuSession &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-50 w-[164px] py-1 rounded-xl border border-line bg-card-solid shadow-raised"
+            style={{ top: menuPos.top, left: menuPos.left }}
           >
-            <Pencil size={13} className="text-muted" /> Rename
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              onDelete(menuId);
-              closeMenu();
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-danger hover:bg-card-2 transition-colors"
-          >
-            <Trash2 size={13} /> Delete
-          </button>
-        </div>
-      )}
+            <button
+              role="menuitem"
+              onClick={() => startRename(menuSession)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-ink hover:bg-card-2 transition-colors"
+            >
+              <Pencil size={13} className="text-muted" /> Rename
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                onDelete(menuId);
+                closeMenu();
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-danger hover:bg-card-2 transition-colors"
+            >
+              <Trash2 size={13} /> Delete
+            </button>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
