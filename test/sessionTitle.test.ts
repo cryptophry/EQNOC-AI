@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MessageRole, type Message } from '../types';
-import { displayTitle, parseCustomTitle, snippetTitle, titleForSave } from '../utils/sessionTitle';
+import { displayTitle, parseCustomTitle, sessionMatchesQuery, snippetTitle, titleForSave } from '../utils/sessionTitle';
 
 const msg = (role: MessageRole, text: string): Message => ({
   id: text || role,
@@ -33,6 +33,35 @@ describe('displayTitle', () => {
     expect(displayTitle('  ')).toBe('Untitled');
     expect(displayTitle(undefined)).toBe('Untitled');
     expect(displayTitle('SACS rectifier')).toBe('SACS rectifier');
+  });
+});
+
+describe('sessionMatchesQuery', () => {
+  it('matches everything when the query is empty', () => {
+    expect(sessionMatchesQuery('SACS rectifier', '')).toBe(true);
+    expect(sessionMatchesQuery('SACS rectifier', '   ')).toBe(true);
+  });
+
+  it('matches words case-insensitively with AND', () => {
+    expect(sessionMatchesQuery('SACS rectifier fault', 'sacs fault')).toBe(true);
+    expect(sessionMatchesQuery('SACS rectifier fault', 'SACS FAULT')).toBe(true);
+    expect(sessionMatchesQuery('SACS rectifier', 'sacs fault')).toBe(false);
+  });
+
+  it('matches as-you-type substrings of the displayed title', () => {
+    expect(sessionMatchesQuery('SACS rectifier fault', 'fau')).toBe(true);
+    expect(sessionMatchesQuery('SACS rectifier fault', 'job')).toBe(false);
+  });
+
+  it('searches the Untitled fallback, not an empty stored title', () => {
+    expect(sessionMatchesQuery('', 'untitled')).toBe(true);
+    expect(sessionMatchesQuery('  ', 'Untitled')).toBe(true);
+    expect(sessionMatchesQuery(undefined, 'untitled')).toBe(true);
+    expect(sessionMatchesQuery('', 'SACS')).toBe(false);
+  });
+
+  it('ignores extra spaces between query words', () => {
+    expect(sessionMatchesQuery('SACS rectifier fault', '  sacs   fault  ')).toBe(true);
   });
 });
 

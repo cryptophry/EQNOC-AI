@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, MessageSquarePlus, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { Check, MessageSquarePlus, MoreVertical, Pencil, Search, Trash2, X } from 'lucide-react';
 import { Session } from '../types';
-import { displayTitle } from '../utils/sessionTitle';
+import { displayTitle, sessionMatchesQuery } from '../utils/sessionTitle';
 
 interface Props {
   sessions: Session[];
@@ -25,12 +25,18 @@ const MENU_W = 164;
 const MENU_H = 84;
 
 const SessionList: React.FC<Props> = ({ sessions, currentId, onOpen, onNew, onDelete, onRename }) => {
+  const [query, setQuery] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
   const ignoreBlur = useRef(false);
+
+  const filtered = useMemo(
+    () => sessions.filter((s) => sessionMatchesQuery(s.title, query)),
+    [sessions, query]
+  );
 
   const closeMenu = () => {
     setMenuId(null);
@@ -109,13 +115,39 @@ const SessionList: React.FC<Props> = ({ sessions, currentId, onOpen, onNew, onDe
           <MessageSquarePlus size={13} /> New
         </button>
       </div>
+      {sessions.length > 0 && (
+        <div className="flex items-center gap-2 mx-1 mb-2 bg-card-2 border border-line rounded-xl px-2.5 py-1.5 focus-ring">
+          <Search size={13} className="text-faint shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search chats"
+            aria-label="Search chats"
+            className="flex-1 bg-transparent outline-none text-[13px] text-ink placeholder:text-faint min-w-0"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="text-faint hover:text-ink"
+              aria-label="Clear search"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
       {sessions.length === 0 ? (
         <p className="text-[12.5px] text-faint px-1 py-3 leading-relaxed">
           Conversations you start will show up here.
         </p>
+      ) : filtered.length === 0 ? (
+        <p className="text-[12.5px] text-faint px-1 py-3 leading-relaxed">
+          No chats match that name.
+        </p>
       ) : (
         <ul className="flex flex-col overflow-y-auto max-h-[240px] nice-scroll gap-0.5">
-          {sessions.map((s) => {
+          {filtered.map((s) => {
             const on = s.id === currentId;
             const editing = editingId === s.id;
             return (

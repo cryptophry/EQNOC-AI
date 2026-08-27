@@ -15,6 +15,17 @@ export function displayTitle(title: string | undefined): string {
   return (title || '').trim() || 'Untitled';
 }
 
+/**
+ * Case-insensitive AND match of query words against the title shown in the CHATS list.
+ * Empty / whitespace query matches everything. Does not search message bodies.
+ */
+export function sessionMatchesQuery(title: string | undefined, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const name = displayTitle(title).toLowerCase();
+  return words.every((w) => name.includes(w));
+}
+
 /** Trimmed custom name, or null if empty (caller must keep the previous title). */
 export function parseCustomTitle(raw: string): string | null {
   const t = raw.trim();
