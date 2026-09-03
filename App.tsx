@@ -495,7 +495,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <div className={`flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-4 min-h-0 ${isNotesOpen ? 'xl:grid-cols-[minmax(0,1fr)_300px_minmax(260px,320px)]' : ''}`}>
+      <div className={`flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 gap-4 min-h-0 ${isNotesOpen ? 'lg:grid-cols-[minmax(0,1fr)_240px_minmax(240px,300px)]' : 'lg:grid-cols-[minmax(0,1fr)_300px]'}`}>
         <section className="glass-panel rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
           <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 nice-scroll">
             {isFresh ? (
@@ -666,8 +666,8 @@ const App: React.FC = () => {
           <aside
             id="scratchpad-panel"
             aria-label="Scratchpad"
-            className="glass-panel rounded-xl2 p-4 flex flex-col min-h-[240px] min-w-0 xl:min-h-0
-              max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:w-[min(22rem,86vw)] max-xl:rounded-none max-xl:border-y-0 max-xl:border-r-0"
+            className="glass-panel rounded-xl2 p-4 flex flex-col min-h-[240px] min-w-0 lg:min-h-0
+              max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-30 max-lg:w-[min(22rem,86vw)] max-lg:rounded-none max-lg:border-y-0 max-lg:border-r-0"
             style={{ animation: 'dock-in .22s cubic-bezier(.32,.85,.35,1) both' }}
           >
             <div className="flex items-center justify-between mb-3 shrink-0">
@@ -675,7 +675,7 @@ const App: React.FC = () => {
               <button onClick={() => setIsNotesOpen(false)} className="icon-btn" aria-label="Close notes"><X size={16} /></button>
             </div>
             <textarea value={notes} onChange={e => handleNotesChange(e.target.value)} placeholder="Jot down anything…"
-              className="flex-1 min-h-[12rem] xl:min-h-0 w-full resize-none bg-card-2 border border-line rounded-xl p-3.5 text-[14px] text-ink outline-none focus-ring transition-shadow placeholder:text-faint" />
+              className="flex-1 min-h-[12rem] lg:min-h-0 w-full resize-none bg-card-2 border border-line rounded-xl p-3.5 text-[14px] text-ink outline-none focus-ring transition-shadow placeholder:text-faint" />
             <p className="text-[11.5px] text-faint mt-2.5 shrink-0">The assistant can read and update these notes.</p>
           </aside>
         )}
