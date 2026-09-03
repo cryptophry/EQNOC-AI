@@ -49,6 +49,7 @@ const ColumnSplitter: React.FC<Props> = ({ label, value, min, max, controls, onC
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
+        e.currentTarget.focus();
         drag.current = { x: e.clientX, value };
         setActive(true);
         document.body.classList.add('col-resizing');
