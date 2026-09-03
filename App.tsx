@@ -19,6 +19,11 @@ const ManualsModal = lazy(() => import('./components/ManualsModal'));
 const PhotosModal = lazy(() => import('./components/PhotosModal'));
 import ReminderModal, { Reminder } from './components/ReminderModal';
 import FieldKitModal from './components/FieldKitModal';
+import ColumnSplitter from './components/ColumnSplitter';
+import {
+  clampLayout, contentBoxWidth, loadLayoutWidths, notesLimits, railLimits, saveLayoutWidths,
+  type LayoutWidths,
+} from './utils/layoutWidths';
 import { ingestPhotoFromDataUrl } from './services/photos';
 import { downscaleImage } from './utils/image';
 import { playAlertSound } from './utils/audio';
@@ -83,6 +88,28 @@ const App: React.FC = () => {
   const notesRef = useRef(notes);
   useEffect(() => { notesRef.current = notes; }, [notes]);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<LayoutWidths>(() => loadLayoutWidths());
+  const [frameW, setFrameW] = useState(0);
+  useEffect(() => {
+    const el = layoutRef.current;
+    if (!el) return;
+    const measure = () => setFrameW(contentBoxWidth(el));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isAuthenticated]);
+  const shown = clampLayout(layout, frameW || 1440, isNotesOpen);
+  const railBound = railLimits(frameW || 1440, isNotesOpen, shown.notes);
+  const notesBound = notesLimits(frameW || 1440, shown.rail);
+  const updateLayout = (patch: Partial<LayoutWidths>) => {
+    setLayout(prev => {
+      const next = { ...prev, ...patch };
+      saveLayoutWidths(next);
+      return next;
+    });
+  };
   const handleNotesChange = (v: string) => {
     setNotes(v);
     try { localStorage.setItem('eqnoc_notes', v); } catch { /* ignore */ }
@@ -495,8 +522,12 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <div className={`flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 gap-4 min-h-0 ${isNotesOpen ? 'lg:grid-cols-[minmax(0,1fr)_240px_minmax(240px,300px)]' : 'lg:grid-cols-[minmax(0,1fr)_300px]'}`}>
-        <section className="glass-panel rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0">
+      <div
+        ref={layoutRef}
+        className={`flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 gap-4 lg:gap-0 min-h-0 ${isNotesOpen ? 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)_16px_var(--notes-w)]' : 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)]'}`}
+        style={{ '--rail-w': `${shown.rail}px`, '--notes-w': `${shown.notes}px` } as React.CSSProperties}
+      >
+        <section className="glass-panel rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0 min-w-0">
           <div ref={streamRef} role="log" aria-live="polite" aria-busy={isLoading} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 nice-scroll">
             {isFresh ? (
               <div className="h-full min-h-[280px] flex flex-col items-center justify-center text-center px-2">
@@ -600,7 +631,16 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        <aside className="flex flex-col gap-3.5">
+        <ColumnSplitter
+          label="Resize chat and tools"
+          value={shown.rail}
+          min={railBound.min}
+          max={railBound.max}
+          controls="tools-rail"
+          onChange={(rail) => updateLayout({ rail })}
+        />
+
+        <aside id="tools-rail" className="flex flex-col gap-3.5 min-w-0">
           <SessionList
             sessions={sessions}
             currentId={currentSessionId}
@@ -661,6 +701,17 @@ const App: React.FC = () => {
             </button>
           </div>
         </aside>
+
+        {isNotesOpen && (
+          <ColumnSplitter
+            label="Resize scratchpad"
+            value={shown.notes}
+            min={notesBound.min}
+            max={notesBound.max}
+            controls="scratchpad-panel"
+            onChange={(notes) => updateLayout({ notes })}
+          />
+        )}
 
         {isNotesOpen && (
           <aside

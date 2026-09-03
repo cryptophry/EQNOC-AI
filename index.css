@@ -207,6 +207,50 @@ body {
 }
 .animate-source-in { animation: source-in 0.28s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 
+/* Desktop column splitters — hidden on the stacked / phone layout. */
+.col-splitter {
+  display: none;
+  width: 16px;
+  padding: 0;
+  border: 0;
+  align-items: stretch;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  position: relative;
+  z-index: 2;
+}
+@media (min-width: 1024px) {
+  .col-splitter { display: flex; }
+}
+.col-splitter::before {
+  content: '';
+  width: 2px;
+  align-self: stretch;
+  margin: 10px 0;
+  border-radius: 99px;
+  background: var(--line);
+  transition: background .15s, width .15s, opacity .15s;
+}
+.col-splitter:hover::before,
+.col-splitter:focus-visible::before,
+.col-splitter.is-dragging::before {
+  width: 3px;
+  background: var(--accent);
+}
+.col-splitter:focus-visible {
+  outline: none;
+}
+.col-splitter:focus-visible::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+body.col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.col-resizing * { cursor: col-resize !important; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
