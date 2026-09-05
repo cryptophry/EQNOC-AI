@@ -524,7 +524,7 @@ const App: React.FC = () => {
 
       <div
         ref={layoutRef}
-        className={`flex-1 w-full max-w-[1440px] mx-auto p-3 sm:p-5 grid grid-cols-1 gap-4 lg:gap-0 min-h-0 ${isNotesOpen ? 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)_16px_var(--notes-w)]' : 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)]'}`}
+        className={`flex-1 w-full p-3 sm:p-5 grid grid-cols-1 gap-4 lg:gap-0 min-h-0 ${isNotesOpen ? 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)_16px_var(--notes-w)]' : 'lg:grid-cols-[minmax(0,1fr)_16px_var(--rail-w)]'}`}
         style={{ '--rail-w': `${shown.rail}px`, '--notes-w': `${shown.notes}px` } as React.CSSProperties}
       >
         <section className="glass-panel rounded-xl2 flex flex-col overflow-hidden min-h-[70vh] lg:min-h-0 min-w-0">
