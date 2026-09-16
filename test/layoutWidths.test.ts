@@ -5,6 +5,7 @@ import {
   DEFAULT_RAIL,
   LAYOUT_STORAGE_KEY,
   MAX_NOTES,
+  MAX_NOTES_RATIO,
   MAX_RAIL,
   MIN_CHAT,
   MIN_NOTES,
@@ -12,6 +13,7 @@ import {
   SPLITTER_W,
   clampLayout,
   loadLayoutWidths,
+  notesCap,
   notesLimits,
   railLimits,
   saveLayoutWidths,
@@ -89,6 +91,18 @@ describe('clampLayout', () => {
       rail: MAX_RAIL,
       notes: MIN_NOTES,
     });
+    expect(clampLayout({ rail: 900, notes: 2000 }, 1400, false).notes).toBe(MAX_NOTES);
+  });
+
+  it('lets notes stay well past the old 480px wall on a wide desk', () => {
+    expect(clampLayout({ rail: DEFAULT_RAIL, notes: 900 }, 1600, true).notes).toBe(900);
+  });
+
+  it('does not let a huge stored notes width crush chat', () => {
+    const container = 1600;
+    const shown = clampLayout({ rail: DEFAULT_RAIL, notes: 2000 }, container, true);
+    expect(shown.notes).toBeGreaterThan(480);
+    expect(container - shown.rail - shown.notes - SPLITTER_W * 2).toBeGreaterThanOrEqual(MIN_CHAT);
   });
 
   it('shrinks notes then rail so chat stays usable when notes are open', () => {
@@ -125,5 +139,14 @@ describe('limits', () => {
     const { min, max } = notesLimits(container, 300);
     expect(min).toBe(MIN_NOTES);
     expect(max).toBe(220);
+  });
+
+  it('lets notes grow far past 480px when leftover space allows', () => {
+    const container = 1600;
+    const leftover = container - MIN_CHAT - SPLITTER_W * 2 - DEFAULT_RAIL;
+    const { max } = notesLimits(container, DEFAULT_RAIL);
+    expect(max).toBeGreaterThan(480);
+    expect(max).toBe(Math.min(leftover, notesCap(container)));
+    expect(notesCap(container)).toBe(Math.round(container * MAX_NOTES_RATIO));
   });
 });

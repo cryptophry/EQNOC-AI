@@ -11,7 +11,10 @@ export const MIN_CHAT = 360;
 export const MIN_RAIL = 200;
 export const MIN_NOTES = 200;
 export const MAX_RAIL = 480;
-export const MAX_NOTES = 480;
+/** Absolute ceiling — wide enough for a desk monitor, not an entire ultrawide. */
+export const MAX_NOTES = 1200;
+/** Scratchpad may take this share of the layout content box when leftover allows. */
+export const MAX_NOTES_RATIO = 0.7;
 
 /** Splitter column width — same as the previous `gap-4` (16px). */
 export const SPLITTER_W = 16;
@@ -26,6 +29,12 @@ export const DEFAULT_LAYOUT: LayoutWidths = { rail: DEFAULT_RAIL, notes: DEFAULT
 function clampNum(n: number, min: number, max: number): number {
   if (max < min) return min;
   return Math.min(max, Math.max(min, n));
+}
+
+/** Viewport-relative notes ceiling (70% of the frame, never above MAX_NOTES). */
+export function notesCap(containerW: number): number {
+  if (!(containerW > 0)) return MAX_NOTES;
+  return clampNum(Math.round(containerW * MAX_NOTES_RATIO), MIN_NOTES, MAX_NOTES);
 }
 
 function asWidth(v: unknown, fallback: number): number {
@@ -74,14 +83,14 @@ export function railLimits(
   notesOpen: boolean,
   notesW: number
 ): { min: number; max: number } {
-  const notesSpace = notesOpen ? clampNum(notesW, MIN_NOTES, MAX_NOTES) + SPLITTER_W : 0;
+  const notesSpace = notesOpen ? clampNum(notesW, MIN_NOTES, notesCap(containerW)) + SPLITTER_W : 0;
   const leftover = containerW - MIN_CHAT - SPLITTER_W - notesSpace;
   return { min: MIN_RAIL, max: clampNum(leftover, MIN_RAIL, MAX_RAIL) };
 }
 
 export function notesLimits(containerW: number, railW: number): { min: number; max: number } {
   const leftover = containerW - MIN_CHAT - SPLITTER_W * 2 - clampNum(railW, MIN_RAIL, MAX_RAIL);
-  return { min: MIN_NOTES, max: clampNum(leftover, MIN_NOTES, MAX_NOTES) };
+  return { min: MIN_NOTES, max: clampNum(leftover, MIN_NOTES, notesCap(containerW)) };
 }
 
 /**
@@ -96,7 +105,7 @@ export function clampLayout(
   if (containerW <= 0) return { ...stored };
 
   let rail = clampNum(stored.rail, MIN_RAIL, MAX_RAIL);
-  let notes = clampNum(stored.notes, MIN_NOTES, MAX_NOTES);
+  let notes = clampNum(stored.notes, MIN_NOTES, notesOpen ? notesCap(containerW) : MAX_NOTES);
 
   const splitters = notesOpen ? SPLITTER_W * 2 : SPLITTER_W;
   const extras = notesOpen ? notes : 0;
