@@ -181,6 +181,13 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    // Corporate proxies (and nginx) often buffer text/event-stream, which makes
+    // the client sit with no output until the whole answer is done — it looks
+    // like the app has hung. This header asks them not to, and the priming
+    // comment below pushes first bytes onto the wire immediately so the client
+    // can tell the stream is alive.
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.write(': stream-open\n\n');
     if (retrievedSources && retrievedSources.length > 0) {
       res.write(`data: ${JSON.stringify({ sources: retrievedSources })}\n\n`);
     }

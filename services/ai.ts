@@ -166,6 +166,11 @@ type SendMessageInput = string | GeminiStylePart[] | GeminiStyleToolResponse[];
 // Counts individual messages (a turn may be user + assistant + tool messages).
 const MAX_HISTORY_MESSAGES = 40;
 
+// If not one byte of the SSE stream has arrived by this point, something on the
+// network is buffering it — fall back to a non-streamed request.
+const STREAM_FIRST_BYTE_TIMEOUT_MS = 12_000;
+const NON_STREAM_TIMEOUT_MS = 120_000;
+
 // Trim to the most recent messages, cutting only at a clean user-turn boundary
 // so we never orphan a `tool` message or an assistant(tool_calls) from its tools.
 // Pure + exported for unit testing.
@@ -252,9 +257,27 @@ export class ChatSession {
     // Accumulate tool call deltas by index (OpenAI streaming format)
     const toolCallAcc: Record<number, { id?: string; name: string; args: string }> = {};
 
+    // Some corporate networks put a proxy in front of us that buffers
+    // text/event-stream responses: not a single byte reaches the browser until
+    // the whole answer is finished, so the UI just sits there. The server writes
+    // a priming comment immediately, so on a healthy connection the first bytes
+    // land in well under a second. If nothing at all has arrived by the
+    // deadline, assume the stream is being swallowed, give up on it, and retry
+    // the turn as one plain (non-streamed) request, which proxies pass through.
+    let sawFirstByte = false;
+    let streamBlocked = false;
+    const firstByteTimer = setTimeout(() => {
+      if (!sawFirstByte) {
+        streamBlocked = true;
+        try { reader.cancel(); } catch { /* already closed */ }
+      }
+    }, STREAM_FIRST_BYTE_TIMEOUT_MS);
+
+    try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      if (!sawFirstByte) { sawFirstByte = true; clearTimeout(firstByteTimer); }
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split('\n');
@@ -292,6 +315,25 @@ export class ChatSession {
           }
         }
       }
+    }
+    } finally {
+      clearTimeout(firstByteTimer);
+    }
+
+    // Stream was swallowed by the network — redo this turn without streaming.
+    // The answer arrives in one go rather than word-by-word, but it arrives.
+    if (streamBlocked && !fullText) {
+      const plain = await callApi(
+        { messages: this.history, stream: false, useKnowledgeBase: true },
+        AbortSignal.timeout(NON_STREAM_TIMEOUT_MS)
+      );
+      const data = await plain.json();
+      if (Array.isArray(data.sources)) yield { sources: data.sources };
+      const msg = data.choices?.[0]?.message;
+      if (msg?.content) { fullText = msg.content; yield { text: msg.content }; }
+      (msg?.tool_calls || []).forEach((tc: any, i: number) => {
+        toolCallAcc[i] = { id: tc.id, name: tc.function?.name || '', args: tc.function?.arguments || '' };
+      });
     }
 
     // Record the assistant turn in history (required before tool responses)
