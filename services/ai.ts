@@ -291,6 +291,15 @@ export class ChatSession {
         let parsed: any;
         try { parsed = JSON.parse(data); } catch { continue; }
 
+        // Server-side failure after the stream was already opened (retrieval
+        // or the model call). Surface it so the UI can show the usual error.
+        if (parsed.error) {
+          const msg = typeof parsed.error === 'string'
+            ? parsed.error
+            : (parsed.error.message || 'AI request failed');
+          throw new Error(String(msg));
+        }
+
         // Custom server event: retrieved source excerpts for verification.
         if (Array.isArray(parsed.sources)) {
           yield { sources: parsed.sources };

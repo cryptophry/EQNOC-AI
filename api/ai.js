@@ -6,8 +6,9 @@
 //   - Ignores client model / tools; both are fixed server-side
 //   - Strips client system messages; injects the knowledge base itself
 //   - Always sets max_tokens; only accepts data: image URLs
-//   - Aborts the upstream request on timeout or client disconnect
+//   - Aborts the upstream request on the handler deadline or client disconnect
 //   - Best-effort per-IP rate limiting
+//   - Library retrieval is best-effort and never blocks the answer
 
 import { verifyToken, signingSecret, tokenFromRequest, rateLimit, clientIp, bodyByteLength } from '../lib/auth.js';
 import { EQNOC_KNOWLEDGE_BASE } from '../lib/knowledgeBase.js';
@@ -50,7 +51,35 @@ const MAX_OUTPUT_TOKENS = 8000;
 const DEFAULT_OUTPUT_TOKENS = 4000;
 const MAX_MESSAGES = 100;
 const MAX_BODY_BYTES = 6 * 1024 * 1024;
-const UPSTREAM_TIMEOUT_MS = 90_000;
+
+// Whole POST, including retrieval and the model stream. Stays under the
+// platform maxDuration so a stuck upstream cannot run out the 300s kill.
+export const HANDLER_DEADLINE_MS = 60_000;
+export const MAX_TOOL_ROUNDS = 4;
+
+// vercel.json sets the same ceiling. Exported here so the route config is
+// visible next to the deadline that must finish first.
+export const maxDuration = 90;
+export const config = { maxDuration: 90 };
+
+export function toolRoundCount(messages) {
+  let n = 0;
+  for (const m of messages || []) {
+    if (m?.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length) n += 1;
+  }
+  return n;
+}
+
+function sawModelToken(text) {
+  return /"content"\s*:\s*"(?:\\.|[^"\\])+"/.test(text)
+    || /"arguments"\s*:\s*"(?:\\.|[^"\\])+"/.test(text);
+}
+
+function asText(value) {
+  if (typeof value === 'string') return value;
+  if (Buffer.isBuffer(value) || ArrayBuffer.isView(value)) return Buffer.from(value).toString('utf8');
+  return String(value);
+}
 
 export default async function handler(req, res) {
   const apiKey = process.env.OPENROUTER_API_KEY;
@@ -114,102 +143,175 @@ export default async function handler(req, res) {
     return;
   }
 
-  let messages = messagesIn;
-  let retrievedSources = null;
-  if (body.useKnowledgeBase) {
-    const systemParts = [EQNOC_KNOWLEDGE_BASE];
-    if (vectorConfigured()) {
-      const manualCtx = await retrieveLibraryContext(lastUserText(messagesIn));
-      if (manualCtx) { systemParts.push(manualCtx.prompt); retrievedSources = manualCtx.sources; }
-    }
-    messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messagesIn];
-  }
+  const started = Date.now();
+  let retrievalMs = 0;
+  let retrievalStatus = 'off';
+  let ttftMs = null;
+  let carry = '';
+  let logged = false;
+  const toolRound = toolRoundCount(messagesIn);
+  const capped = toolRound >= MAX_TOOL_ROUNDS;
 
-  const model = hasImageContent(messagesIn) ? visionModel : textModel;
-  const requested = typeof body.max_tokens === 'number' ? body.max_tokens : DEFAULT_OUTPUT_TOKENS;
-
-  const payload = {
-    model,
-    messages,
-    stream: !!body.stream,
-    max_tokens: Math.max(1, Math.min(MAX_OUTPUT_TOKENS, requested)),
+  const logTiming = () => {
+    if (logged) return;
+    logged = true;
+    const ttft = ttftMs == null ? 'none' : `${ttftMs}ms`;
+    console.log(
+      `[ai] retrieval=${retrievalMs}ms ${retrievalStatus} ttft=${ttft} toolRound=${toolRound}${capped ? ' capped' : ''} total=${Date.now() - started}ms`
+    );
   };
-  if (body.useKnowledgeBase) payload.tools = CHAT_TOOLS;
-  if (typeof body.temperature === 'number') {
-    payload.temperature = Math.max(0, Math.min(2, body.temperature));
-  }
 
+  const observe = (value) => {
+    if (ttftMs != null || value == null) return;
+    carry += asText(value);
+    if (carry.length > 8192) carry = carry.slice(-2048);
+    if (sawModelToken(carry)) ttftMs = Date.now() - started;
+  };
+
+  let streamingStarted = false;
+  const sendError = (status, error) => {
+    if (streamingStarted) {
+      try { res.write(`data: ${JSON.stringify({ error })}\n\n`); } catch { /* client gone */ }
+      try { res.end(); } catch { /* client gone */ }
+      return;
+    }
+    res.status(status).json({ error });
+  };
+
+  const streaming = !!body.stream;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  let deadlineHit = false;
+  const deadlineTimer = setTimeout(() => {
+    deadlineHit = true;
+    controller.abort();
+  }, HANDLER_DEADLINE_MS);
   const onClose = () => controller.abort();
   req.on('close', onClose);
 
-  let upstream;
   try {
-    upstream = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': referer(),
-        'X-Title': 'NOC Assistant',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    clearTimeout(timeout);
-    req.off?.('close', onClose);
-    const aborted = err?.name === 'AbortError';
-    res.status(aborted ? 504 : 502).json({
-      error: aborted ? 'Upstream timed out' : `Failed to reach OpenRouter: ${err.message}`,
-    });
-    return;
-  }
-
-  if (!upstream.ok) {
-    clearTimeout(timeout);
-    req.off?.('close', onClose);
-    const text = await upstream.text();
-    res.status(upstream.status).setHeader('Content-Type', 'application/json');
-    res.end(text);
-    return;
-  }
-
-  if (payload.stream) {
-    res.status(200);
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    // Corporate proxies (and nginx) often buffer text/event-stream, which makes
-    // the client sit with no output until the whole answer is done — it looks
-    // like the app has hung. This header asks them not to, and the priming
-    // comment below pushes first bytes onto the wire immediately so the client
-    // can tell the stream is alive.
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.write(': stream-open\n\n');
-    if (retrievedSources && retrievedSources.length > 0) {
-      res.write(`data: ${JSON.stringify({ sources: retrievedSources })}\n\n`);
+    // Prime the SSE stream before any library lookup. The browser gives up
+    // and retries without streaming if no byte arrives within 12s; a slow
+    // Upstash call used to burn that budget before this comment was written.
+    if (streaming) {
+      res.status(200);
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+      res.write(': stream-open\n\n');
+      if (typeof res.flush === 'function') res.flush();
+      streamingStarted = true;
     }
-    const reader = upstream.body.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(Buffer.from(value));
+
+    let messages = messagesIn;
+    let retrievedSources = null;
+    if (body.useKnowledgeBase) {
+      const t0 = Date.now();
+      const systemParts = [EQNOC_KNOWLEDGE_BASE];
+      if (vectorConfigured()) {
+        const manualCtx = await retrieveLibraryContext(lastUserText(messagesIn));
+        retrievalStatus = manualCtx?.status || 'empty';
+        if (manualCtx?.prompt) {
+          systemParts.push(manualCtx.prompt);
+          retrievedSources = manualCtx.sources;
+        }
       }
-    } catch {
-      // client disconnect or upstream abort
-    } finally {
-      clearTimeout(timeout);
-      req.off?.('close', onClose);
-      res.end();
+      retrievalMs = Date.now() - t0;
+      messages = [{ role: 'system', content: systemParts.join('\n\n---\n\n') }, ...messagesIn];
     }
-  } else {
-    clearTimeout(timeout);
+
+    if (deadlineHit || controller.signal.aborted) {
+      sendError(504, deadlineHit ? 'Request deadline exceeded' : 'Upstream timed out');
+      return;
+    }
+
+    const model = hasImageContent(messagesIn) ? visionModel : textModel;
+    const requested = typeof body.max_tokens === 'number' ? body.max_tokens : DEFAULT_OUTPUT_TOKENS;
+
+    const payload = {
+      model,
+      messages,
+      stream: streaming,
+      max_tokens: Math.max(1, Math.min(MAX_OUTPUT_TOKENS, requested)),
+    };
+    if (body.useKnowledgeBase && !capped) payload.tools = CHAT_TOOLS;
+    if (typeof body.temperature === 'number') {
+      payload.temperature = Math.max(0, Math.min(2, body.temperature));
+    }
+
+    let upstream;
+    try {
+      upstream = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': referer(),
+          'X-Title': 'NOC Assistant',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const aborted = err?.name === 'AbortError' || controller.signal.aborted;
+      sendError(
+        aborted ? 504 : 502,
+        aborted
+          ? (deadlineHit ? 'Request deadline exceeded' : 'Upstream timed out')
+          : `Failed to reach OpenRouter: ${err.message}`,
+      );
+      return;
+    }
+
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      if (streamingStarted) {
+        let error = 'Upstream failed';
+        try {
+          const parsed = JSON.parse(text);
+          const e = parsed?.error;
+          error = typeof e === 'string' ? e : (e?.message || text || error);
+        } catch { error = text || error; }
+        sendError(upstream.status, String(error).slice(0, 500));
+        return;
+      }
+      res.status(upstream.status).setHeader('Content-Type', 'application/json');
+      res.end(text);
+      return;
+    }
+
+    if (streaming) {
+      if (retrievedSources && retrievedSources.length > 0) {
+        res.write(`data: ${JSON.stringify({ sources: retrievedSources })}\n\n`);
+      }
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          observe(value);
+          res.write(Buffer.from(value));
+        }
+      } catch {
+        if (ttftMs == null && deadlineHit) {
+          try { res.write(`data: ${JSON.stringify({ error: 'Request deadline exceeded' })}\n\n`); } catch { /* client gone */ }
+        }
+      } finally {
+        try { res.end(); } catch { /* client gone */ }
+      }
+    } else {
+      const data = await upstream.json();
+      const msg = data?.choices?.[0]?.message;
+      if (msg && (msg.content || (Array.isArray(msg.tool_calls) && msg.tool_calls.length))) {
+        ttftMs = Date.now() - started;
+      }
+      if (retrievedSources && retrievedSources.length > 0) data.sources = retrievedSources;
+      res.status(200).json(data);
+    }
+  } finally {
+    clearTimeout(deadlineTimer);
     req.off?.('close', onClose);
-    const data = await upstream.json();
-    if (retrievedSources && retrievedSources.length > 0) data.sources = retrievedSources;
-    res.status(200).json(data);
+    logTiming();
   }
 }

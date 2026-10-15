@@ -389,11 +389,13 @@ const App: React.FC = () => {
         scrollToBottom();
       }
 
-      // Handle tool calls (loop for chained calls)
+      // Handle tool calls (loop for chained calls). Capped so a model that
+      // keeps requesting tools cannot pile on requests.
       let pending = functionCalls;
       let rounds = 0;
       let workingNotes = notesRef.current;
-      while (pending.length > 0 && rounds++ < 5) {
+      const MAX_TOOL_ROUNDS = 4;
+      while (pending.length > 0 && rounds++ < MAX_TOOL_ROUNDS) {
         const toolResponses = [];
         for (const fc of pending) {
           const args = (fc.args || {}) as Record<string, unknown>;
