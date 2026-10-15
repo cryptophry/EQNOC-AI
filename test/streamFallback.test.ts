@@ -77,4 +77,24 @@ describe('stream fallback when a proxy buffers SSE', () => {
     expect(calls[0].stream).toBe(true);
     expect(chunks.map(c => c.text || '').join('')).toBe('Hello');
   });
+
+  it('surfaces a server error event after the stream has opened', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      const enc = new TextEncoder();
+      const stream = new ReadableStream({
+        start(c) {
+          c.enqueue(enc.encode(': stream-open\n\n'));
+          c.enqueue(enc.encode('data: {"error":"Upstream timed out"}\n\n'));
+          c.close();
+        },
+      });
+      return { ok: true, status: 200, body: stream } as unknown as Response;
+    }));
+
+    const session = createChatSession();
+    const run = (async () => {
+      for await (const _c of session.sendMessageStream({ message: 'hi' })) { /* drain */ }
+    })();
+    await expect(run).rejects.toThrow(/Upstream timed out/);
+  });
 });
