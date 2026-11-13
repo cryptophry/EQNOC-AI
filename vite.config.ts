@@ -51,6 +51,8 @@ export default defineConfig(() => {
         },
       }),
     ],
+    // workbench/ is a separate app with its own install and test run.
+    test: { exclude: ['**/node_modules/**', '**/dist/**', 'workbench/**'] },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
